@@ -1,0 +1,83 @@
+# ============================================================================
+# Build - the per-push gate
+# ============================================================================
+# Builds and packages on every branch and every PR into main. It publishes
+# NOTHING: there is no upload-artifact step here and one must not be added.
+# Per-push artifacts were dropped fleet-wide on 2026-08-29 after a rolling
+# 14-day window peaked at 749 MB against the 500 MB a Free personal account
+# gets, which exhausted the quota and failed the uploads. Test builds come
+# from the rolling `dev` pre-release (`pixi run release nightly`), finished
+# ones from a versioned Release.
+#
+# The build is one line, `pixi run package`, the same command a developer
+# runs. Per AGENTS.md there is no cmake/msbuild invocation in this file:
+# anything the build needs first belongs in that task's depends-on chain, or
+# local and CI are free to drift.
+# ============================================================================
+
+name: Build
+
+# This workflow reads the repo and publishes nothing (see the header), so its
+# token needs no write scope. Without the block it inherits whatever the
+# repository default is, which on an older repo is write-all.
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+
+jobs:
+  build:
+    name: Build and Package
+    # release.ps1's version-bump commit is built by release.yml off the tag it
+    # pushes alongside; without this guard every release builds twice.
+    if: ${{ !startsWith(github.event.head_commit.message, 'Release v') }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # cameraunlock-core is the only submodule and carries none of its own
+          # (it vendors MinHook and REFramework as plain directories), so
+          # recursive costs nothing and keeps working if that ever changes.
+          submodules: recursive
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@30375c66a4eea26614e0d39710365f22f8b0af57 # v3.0.0
+
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@5185adfbffb4bd703da3010310260805d89ebb11 # v0.9.6
+        with:
+          run-install: false
+
+      - name: Build and package
+        shell: pwsh
+        run: |
+          pixi run package
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error::'pixi run package' failed."
+            exit 1
+          }
+
+      - name: Verify installer was produced
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release/*-installer.zip -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $installer) {
+            Write-Host "::error::No release/*-installer.zip after 'pixi run package'. The package task must write the installer ZIP into release/."
+            exit 1
+          }
+          Write-Host "Installer: $($installer.Name) ($([math]::Round($installer.Length / 1MB, 2)) MB)"

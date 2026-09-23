@@ -1,0 +1,59 @@
+# Agent tooling and machine-generated docs (never tracked - see AGENTS.md)
+.claude/
+.lab/
+skills/
+.skills/
+AGENTS.md
+CLAUDE.md
+NEXUS_MODS.md
+mcp.json
+.mcp.json
+.mcp/
+
+# Reverse-engineering and session scratch output (keep on disk, never deliverable)
+scratch/
+.scratch/
+ghidra/
+*.gpr
+*.rep/
+*.dmp
+*.log
+# Screenshots land at the repo root when a scratch path gets flattened
+/*.png
+
+# Build and package output
+build/
+build-dev/
+bin/
+obj/
+out/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+dist/
+release/
+libs/*.dll
+libs/*.lib
+src/*/libs/*.dll
+src/*/libs/*.lib
+*.aps
+*.ilk
+*.pdb
+
+# Tooling / IDE
+.pixi/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Local runtime state and secrets
+.headtracking-state.json
+.env
+.env.*
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,46 @@
+# ============================================================================
+# Release
+# ============================================================================
+# A thin caller of the fleet's one release workflow. Everything the release
+# does - tag format check, tag-vs-CMakeLists version check, pixi packaging,
+# release notes, ZIP discovery, `gh release create`, the Lopari catalog pin
+# and the Discord announcement - lives in cameraunlock-core's release-mod.yml
+# so a fix lands once instead of in every mod's copy.
+#
+# The `uses:` ref is pinned to a commit SHA, not @main: that workflow runs
+# with contents:write, DISCORD_RELEASE_WEBHOOK and LOPARI_APP_ACTIONS_TOKEN,
+# and at @main whatever lands on core's default branch would run with all
+# three. The SHA is the one the rest of the fleet calls; it is independent of
+# this repo's cameraunlock-core submodule pin, because release-mod.yml runs
+# the scripts out of the submodule it checks out with this repo, not the ones
+# at its own ref.
+#
+# Voices of the Void Head Tracking is an ASI mod whose payload deploys next to
+# the game exe, so it ships installer-only and produces no Nexus ZIP.
+# release-mod.yml globs release/*-nexus.zip optionally, so that needs nothing
+# here.
+# ============================================================================
+
+name: Release
+run-name: "Release ${{ github.ref_name }}"
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  release:
+    uses: itsloopyo/cameraunlock-core/.github/workflows/release-mod.yml@435915a8a3d8e1b799cc169b74f1fcf72b9534e7
+    with:
+      project-name: 'Voices of the Void Head Tracking'
+      # CMakeLists.txt's project(... VERSION x.y.z) is what release.ps1 bumps
+      # and what scripts/install.cmd's MOD_VERSION has to agree with.
+      version-source: cmake
+      version-path: 'CMakeLists.txt'
+      artifact-paths: 'src/ cameraunlock-core/ scripts/install.cmd scripts/uninstall.cmd'
+      # C++ / CMake mod: no .NET SDK, but MSBuild on PATH for the generator.
+      setup-msbuild: true
+    permissions:
+      contents: write
+    secrets: inherit

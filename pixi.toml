@@ -1,0 +1,65 @@
+[workspace]
+name = "voices-of-the-void-headtracking"
+version = "0.0.0"
+description = "Head tracking mod for Voices of the Void (UE4)"
+license = "MIT"
+license-file = "LICENSE"
+channels = ["conda-forge"]
+platforms = ["win-64"]
+
+[tasks]
+update-submodule = "git submodule update --remote cameraunlock-core && powershell -NoProfile -ExecutionPolicy Bypass -File cameraunlock-core/scripts/update-submodule.ps1"
+sync = "git submodule update --remote cameraunlock-core"
+
+# No -G: let CMake auto-detect the installed Visual Studio generator.
+setup = { cmd = """
+    powershell -Command "if (-not (Test-Path 'build')) { cmake -B build -A x64 } else { Write-Host 'Build directory exists, skipping setup' -ForegroundColor Yellow }"
+""" }
+
+build = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
+build-debug = { cmd = "cmake --build build --config Debug", depends-on = ["setup"] }
+
+test = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build"] }
+
+clean = { cmd = """
+    powershell -Command "if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; Write-Host 'Build artifacts cleaned' -ForegroundColor Green"
+""" }
+
+clean-all = { cmd = """
+    powershell -Command "foreach ($d in @('build','release')) { if (Test-Path $d) { Remove-Item $d -Recurse -Force } }; Write-Host 'All build artifacts cleaned' -ForegroundColor Green"
+""" }
+
+# Bump the vendored Ultimate ASI Loader copy. Manual, with a commit attached -
+# nothing depends on it; build, package and release consume whatever is
+# committed under vendor/.
+update-deps = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update-deps.ps1" }
+
+# Package the installer ZIP. One ZIP only: the .asi deploys next to the game
+# exe, where no mod manager can put it, so this mod is installer-only and has
+# no Nexus ZIP.
+package = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build"] }
+
+# Full release workflow: stamp version, changelog, package, commit, tag, push.
+# Unattended - `pixi run release minor` is the authorization, there is no prompt.
+release = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/release.ps1" }
+
+# Build + deploy into the detected game install (dev loop).
+deploy = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy.ps1", depends-on = ["build"] }
+
+# Launch the game for a test run (see -Windowed / -ResX / -ResY).
+launch = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/launch.ps1" }
+
+install = { depends-on = ["deploy"] }
+uninstall = 'cmd /c scripts\uninstall.cmd'
+
+# Every copy `pixi run deploy` wrote to. The task above resolves a single
+# install, so on a machine with two it leaves a stale .asi loading in the other.
+uninstall-all = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/uninstall-all.ps1" }
+
+# The release gates, reachable the same way a developer runs everything else
+# rather than only by path.
+validate-manifest = "node cameraunlock-core/scripts/validate-manifest.mjs"
+validate-notices = "node cameraunlock-core/scripts/validate-notices.mjs"
+
+[dependencies]
+# No pixi-managed deps - relies on system CMake + Visual Studio.

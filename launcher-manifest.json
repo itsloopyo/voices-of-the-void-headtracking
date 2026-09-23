@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "mod_info": {
+    "name": "VoicesOfTheVoidHeadTracking",
+    "version": "0.0.0",
+    "game_id": "voices-of-the-void"
+  },
+  "strategy": "AsiLoader",
+  "delivery_mode": "manifest",
+
+  "files": [
+    { "source": "vendor/ultimate-asi-loader/dinput8.dll", "target": "winmm.dll", "anchor": "exe_dir" },
+    { "source": "plugins/VoicesOfTheVoidHeadTracking.asi", "target": "VoicesOfTheVoidHeadTracking.asi", "anchor": "exe_dir" }
+  ],
+
+  "runtime_requirements": [],
+  "dependencies": []
+}
