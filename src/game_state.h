@@ -35,7 +35,8 @@ enum class Blocker {
 struct Verdict {
     bool InGameplay = false;
     Blocker Why = Blocker::NoPlayer;
-    // How far the drawn view sits from the pawn's camera component, for the log.
+    // How far the drawn view sits from the pawn's camera component, or from
+    // where that component was one movement step earlier if that is nearer.
     double ViewOffsetCm = -1.0;
     double ViewAngleDeg = -1.0;
     // How many player states the game state carries, which is how many people

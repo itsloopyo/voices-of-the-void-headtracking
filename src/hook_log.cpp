@@ -221,4 +221,36 @@ void AimTrace(const aim_trace::Result& hit, double maxDistanceCm) {
                   hit.Component ? ue::ObjectName(hit.Component).c_str() : "-", hit.Distance);
 }
 
+void FrameCost(std::uint64_t hookUs, std::uint64_t gapUs) {
+    constexpr std::uint64_t kSlowHookUs = 1000;
+    constexpr std::uint64_t kStallUs = 50000;
+    constexpr std::uint64_t kWindowMs = 1000;
+    static std::uint64_t s_windowStart = 0;
+    static std::uint64_t s_passes = 0, s_hookTotal = 0, s_hookMax = 0, s_gapMax = 0;
+    static std::uint64_t s_hookAtGapMax = 0, s_slow = 0, s_stalls = 0;
+
+    ++s_passes;
+    s_hookTotal += hookUs;
+    if (hookUs > s_hookMax) s_hookMax = hookUs;
+    if (hookUs > kSlowHookUs) ++s_slow;
+    if (gapUs > kStallUs) ++s_stalls;
+    if (gapUs > s_gapMax) {
+        s_gapMax = gapUs;
+        s_hookAtGapMax = hookUs;
+    }
+
+    const std::uint64_t now = GetTickCount64();
+    if (s_windowStart == 0) s_windowStart = now;
+    if (now - s_windowStart < kWindowMs) return;
+    if (s_slow > 0 || s_stalls > 0)
+        Log::Line("perf: %llu hook passes, avg %.3fms max %.3fms (%llu over 1ms); longest gap "
+                  "between passes %.1fms, the pass after it %.3fms; %llu gaps over 50ms",
+                  static_cast<unsigned long long>(s_passes),
+                  s_hookTotal / 1000.0 / static_cast<double>(s_passes), s_hookMax / 1000.0,
+                  static_cast<unsigned long long>(s_slow), s_gapMax / 1000.0,
+                  s_hookAtGapMax / 1000.0, static_cast<unsigned long long>(s_stalls));
+    s_windowStart = now;
+    s_passes = s_hookTotal = s_hookMax = s_gapMax = s_hookAtGapMax = s_slow = s_stalls = 0;
+}
+
 }  // namespace votv_ht::hook_log

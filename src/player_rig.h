@@ -26,14 +26,21 @@ struct Transform {
 };
 
 struct Snapshot {
-    // The mainPlayer_C the controller possesses, or 0 for any other pawn (or
-    // none). The main menu's own pawn fails this and so closes the gate without
-    // a flag of its own.
+    // The pawn the controller possesses when it is one the player looks out of:
+    // mainPlayer_C on foot, or the ATV_C the player is riding. 0 for any other
+    // pawn (or none). The main menu's own pawn fails this and so closes the
+    // gate without a flag of its own.
     std::uintptr_t Pawn = 0;
-    // mainPlayer_C::Camera. Gameplay is drawn from it; a cutscene or a
-    // death/sleep camera is drawn from somewhere else.
+    // The mainPlayer_C: the pawn itself on foot, the rider on the ATV. The
+    // state flags below are read from it either way.
+    std::uintptr_t Player = 0;
+    // True while riding. The ATV's camera rides a vehicle that pitches and
+    // rolls with the ground.
+    bool Riding = false;
+    // The possessed pawn's own Camera component. Gameplay is drawn from it; a
+    // cutscene or a death/sleep camera is drawn from somewhere else.
     Transform Camera;
-    // States the pawn reports that mean the player is not in ordinary control:
+    // States the player reports that mean they are not in ordinary control:
     // dead, ragdolled, waking up out of bed, or with mouse input handed to a
     // UI (the in-game computer, the tablet).
     bool HaveState = false;
@@ -42,10 +49,10 @@ struct Snapshot {
     bool WakingUp = false;
     bool MouseInputOff = false;
     // The un-zoomed field of view the pose is scaled against, in degrees.
-    // mainPlayer_C drives its zoom through the `Zoom` timeline, which writes
-    // CameraComponent::FieldOfView; the un-zoomed value is that same field
-    // sampled while the timeline sits at position 0, which is what the player's
-    // own FOV setting put there. The drawn value comes off the view info the
+    // mainPlayer_C drives its zoom through the `Zoom` timeline and ATV_C
+    // through `Timeline`, and both write their own CameraComponent's
+    // FieldOfView; the un-zoomed value is that same field sampled while the
+    // timeline sits at position 0. The drawn value comes off the view info the
     // render caller carries, and the two are equal at rest, which is what makes
     // the zoom factor read 1.0000 in ordinary play.
     bool HaveFov = false;

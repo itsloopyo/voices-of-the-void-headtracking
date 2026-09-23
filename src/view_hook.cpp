@@ -30,6 +30,7 @@
 #include "camera_boundary.h"
 #include "camera_fov.h"
 #include "dev_console.h"
+#include "flashlight.h"
 #include "footage_view.h"
 #include "frame_report.h"
 #include "game_state.h"
@@ -127,6 +128,11 @@ bool SameView(const ue4::FRotator& a, const ue4::FRotator& b) {
 
 // The tick the pose started applying, 0 while it is not applied.
 std::uint64_t g_poseSinceMs = 0;
+
+// A clean eye that moves further than this between two frames has been cut to,
+// not moved. Flying in noclip with Shift held covered 152 m in 3 s, which is
+// well under this a frame.
+constexpr double kCameraCutCm = 300.0;
 
 // How far the aim ray is cast. Past this the mark is projected from the
 // direction alone, which is what a target at infinity looks like anyway.
@@ -286,6 +292,14 @@ bool ReadHeadPosition(Session* session, Pose& pose) {
 // level leaves room for.
 FVector LeanedEye(const FVector& cleanLocation, const FQuat4d& cleanQ, const Pose& pose,
                   bool havePosition, float dt, std::uintptr_t pawn, FrameReport& report) {
+    // A camera cut: a teleport, or the rider getting on or off the ATV. The
+    // allowance belongs to the wall the eye was next to before it, so it starts
+    // over rather than easing out of that wall in the new place.
+    static FVector s_lastEye{0.0, 0.0, 0.0};
+    const double cx = cleanLocation.X - s_lastEye.X, cy = cleanLocation.Y - s_lastEye.Y,
+                 cz = cleanLocation.Z - s_lastEye.Z;
+    s_lastEye = cleanLocation;
+    if (cx * cx + cy * cy + cz * cz > kCameraCutCm * kCameraCutCm) g_leanClamp.Reset();
     if (!havePosition) {
         // Rotation-only mode applies a pose but no lean, so the clamp never runs
         // and never releases. Without this the allowance stays frozen at the last
@@ -370,6 +384,7 @@ void ApplyFrame(std::uintptr_t controller, std::uintptr_t retRva, ue4::FVector* 
         g_poseSinceMs = 0;
         g_leanClamp.Reset();
         reticle::Publish(controller, rig.Pawn, false, 0.0f, 0.0f);
+        flashlight::Update(rig.Player, false, FQuat4d{0.0, 0.0, 0.0, 1.0});
         g_lastAim = Sample(aim.Origin, aim.Direction, report, *outLocation);
         NoteLeanState(report);
         hook_log::Heartbeat(report, retRva);
@@ -391,13 +406,22 @@ void ApplyFrame(std::uintptr_t controller, std::uintptr_t retRva, ue4::FVector* 
                             report.ZoomFactor);
     report.Applied = pose;
 
+    // The ATV's camera hangs off two spring arms on the vehicle's own physics
+    // body, and both inherit its pitch and roll, so while riding the world's up
+    // axis has no fixed relation to where the rider is looking and head yaw turns
+    // about the camera's own.
     FRotator rotation = clean;
     camera_boundary::ApplyHeadPose(rotation, pose.yaw, pose.pitch, pose.roll,
-                                   g_worldSpaceYaw.load(std::memory_order_relaxed));
+                                   g_worldSpaceYaw.load(std::memory_order_relaxed) &&
+                                       !rig.Riding);
     const FVector eye =
         LeanedEye(cleanLocation, cleanQ, pose, havePosition, dt, rig.Pawn, report);
     *outRotation = ue4::FromCore(rotation);
     *outLocation = ue4::FromCore(eye);
+    // Riding, the flashlight is on a player whose camera is not the one drawn.
+    flashlight::Update(rig.Player, !rig.Riding,
+                       ue::QuatMul(ue::QuatFromEulerDeg(rotation.Pitch, rotation.Yaw, rotation.Roll),
+                                   ue::QuatInv(cleanQ)));
 
     if (hit.Valid && FrameTangents(report.RenderFov, report.TanX, report.TanY))
         report.Mark =
@@ -408,6 +432,23 @@ void ApplyFrame(std::uintptr_t controller, std::uintptr_t retRva, ue4::FVector* 
 
     NoteLeanState(report);
     hook_log::Heartbeat(report, retRva);
+}
+
+// The pass's own cost and the gap since the last one, for hook_log::FrameCost.
+void NoteFrameCost(std::int64_t before, std::int64_t after) {
+    static std::int64_t s_frequency = 0;
+    static std::int64_t s_lastStart = 0;
+    if (s_frequency == 0) {
+        LARGE_INTEGER f{};
+        QueryPerformanceFrequency(&f);
+        s_frequency = f.QuadPart;
+    }
+    const auto us = [](std::int64_t ticks) {
+        return static_cast<std::uint64_t>(ticks * 1000000 / s_frequency);
+    };
+    const std::uint64_t gapUs = s_lastStart != 0 ? us(before - s_lastStart) : 0;
+    s_lastStart = before;
+    hook_log::FrameCost(us(after - before), gapUs);
 }
 
 void __fastcall GetPlayerViewPoint_Hook(void* self, ue4::FVector* outLocation, ue4::FRotator* outRotation) {
@@ -440,8 +481,12 @@ void __fastcall GetPlayerViewPoint_Hook(void* self, ue4::FVector* outLocation, u
     if (ReplayFrame(haveFrame, engineFrame, cleanLocationRaw, cleanRaw, outLocation, outRotation))
         return;
 
+    LARGE_INTEGER before{}, after{};
+    QueryPerformanceCounter(&before);
     ApplyFrame(controller, retRva, outLocation, outRotation, cleanLocationRaw, cleanRaw,
                GetTickCount64());
+    QueryPerformanceCounter(&after);
+    NoteFrameCost(before.QuadPart, after.QuadPart);
 
     g_frameCache = FrameCache{haveFrame, engineFrame,  cleanLocationRaw,
                               cleanRaw,  *outLocation, *outRotation};

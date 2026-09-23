@@ -55,4 +55,12 @@ void FovReadable(const FrameReport& report);
 // with, for the no-contact line.
 void AimTrace(const aim_trace::Result& hit, double maxDistanceCm);
 
+// What one pass of the hook cost and how long it had been since the last pass,
+// both in microseconds. The render caller does a full pass about twice per
+// engine frame, so the gap is half a frame in steady play and the length of the
+// stall in a hitch. Summarised at most once a second, and only for a second that
+// held a pass over a millisecond or a gap over 50 ms, so a stutter report can be
+// read against the mod's own share of it.
+void FrameCost(std::uint64_t hookUs, std::uint64_t gapUs);
+
 }  // namespace votv_ht::hook_log

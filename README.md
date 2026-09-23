@@ -111,6 +111,8 @@ Holding either chord does press the game's own `Ctrl` and `Shift`, which crouch 
 
 **Toggle yaw mode** switches which axis head yaw turns about. Horizon-locked is the default: yaw goes about the world up-axis, so looking at the floor and turning your head pans across it. Camera-local turns about the camera's own up-axis instead, which leans the horizon when the camera is pitched steeply. It applies for the session and is not written back to the file.
 
+While you ride the ATV, head yaw always turns about the camera's own up-axis, whichever mode is set. The ATV's camera tilts with the vehicle, so the world's up-axis has no fixed relation to where you are looking. Your yaw mode applies again once you get off.
+
 ## Configuration
 
 `HeadTracking.ini` sits next to the game exe, in `VotV\Binaries\Win64\`, and is written with the defaults on first launch. Delete it to get the defaults back.
@@ -158,6 +160,10 @@ Voices of the Void has its own field of view slider in the settings. The mod rea
 
 Head tracking moves the picture by the same amount whatever field of view the game is drawing at, so zooming in feels no more sensitive than walking around does. The `fov:` line in the log carries the field of view being drawn, the un-zoomed one, and the factor between them, and reads `factor 1.0000` in ordinary play.
 
+### Flashlight
+
+The flashlight turns with your head, one and a half times as far as your head turns, so the beam gets to what you are turning towards slightly ahead of the view. It goes back to pointing along your mouse aim, as the game has it, in menus, with tracking switched off, and while you ride the ATV.
+
 ### Window placement
 
 A windowed game is moved once to the center of the desktop work area on the monitor it opened on, after its window has stopped moving. That is the screen minus the taskbar, so the picture sits a little above the middle of the glass. A fullscreen or borderless window is left where it is, and so is one the game already put there. Nothing is moved on a game build the mod has no profile for. The `window:` line in the log says which of those happened.
@@ -195,6 +201,10 @@ A windowed game is moved once to the center of the desktop work area on the moni
 **The crosshair has moved off the middle of the screen:**
 
 - That is where you are actually pointing. With your head turned or leaning, the middle of the screen is no longer the direction the game reads for picking things up, so the mod moves the crosshair onto the point the game would interact with. `MoveCrosshair=0` in `HeadTracking.ini` leaves it in the middle instead.
+
+**The crosshair wobbles slightly while standing still:**
+
+- That is the game's own head bob. It moves the view a little even when you stand still, and the crosshair stays on the point you are aiming at while it does. Voices of the Void's Settings have **Headbob strength** and **Headbob tilt**; with both at zero the crosshair holds still.
 
 **Known limitations:**
 

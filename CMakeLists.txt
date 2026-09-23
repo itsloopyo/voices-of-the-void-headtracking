@@ -51,6 +51,7 @@ set(MOD_SOURCES
     src/game_state.cpp
     src/lean_trace.cpp
     src/footage_view.cpp
+    src/flashlight.cpp
     src/dev_console.cpp
     src/dev/dev_commands.cpp
     src/dev/dev_probes.cpp

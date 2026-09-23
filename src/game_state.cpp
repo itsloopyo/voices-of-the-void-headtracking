@@ -33,6 +33,26 @@ constexpr std::size_t kTArrayNumOffset = sizeof(std::uintptr_t);
 
 std::atomic<bool> g_soloOnly{true};
 
+// Where the pawn's camera component was before its most recent move. The drawn
+// view trails the component by one movement step: flying in noclip, every
+// frame's view sat exactly where the component had been one step earlier, 41.7
+// cm back at the normal noclip speed and past kMaxViewOffsetCm once Shift was
+// held. Measured against the current position alone, that closed the gate on
+// every other frame and the view jumped between tracked and untracked. The step
+// is the one the view is behind by, not the previous frame's, because noclip
+// moves the pawn on alternate frames.
+ue::FVector g_camNow{0.0, 0.0, 0.0};
+ue::FVector g_camBefore{0.0, 0.0, 0.0};
+
+bool SamePoint(const ue::FVector& a, const ue::FVector& b) {
+    return a.X == b.X && a.Y == b.Y && a.Z == b.Z;
+}
+
+double Distance(const ue::FVector& a, const ue::FVector& b) {
+    const double dx = a.X - b.X, dy = a.Y - b.Y, dz = a.Z - b.Z;
+    return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
+
 ue_vm::ResolveRetry g_retry;
 bool g_resolved = false;
 
@@ -188,8 +208,13 @@ Verdict Evaluate(std::uintptr_t controller, const player_rig::Snapshot& rig,
     }
 
     const ue::FVector& cam = rig.Camera.Position;
-    const double dx = cleanLocation.X - cam.X, dy = cleanLocation.Y - cam.Y, dz = cleanLocation.Z - cam.Z;
-    v.ViewOffsetCm = std::sqrt(dx * dx + dy * dy + dz * dz);
+    if (!SamePoint(cam, g_camNow)) {
+        g_camBefore = g_camNow;
+        g_camNow = cam;
+    }
+    const double now = Distance(cleanLocation, cam);
+    const double before = Distance(cleanLocation, g_camBefore);
+    v.ViewOffsetCm = now < before ? now : before;
     const ue::FVector viewFwd = ue::QuatRotateVec(cleanRotation, ue::FVector{1.0, 0.0, 0.0});
     const ue::FVector& camFwd = rig.Camera.Forward;
     double dot = viewFwd.X * camFwd.X + viewFwd.Y * camFwd.Y + viewFwd.Z * camFwd.Z;
