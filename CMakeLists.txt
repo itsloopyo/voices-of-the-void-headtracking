@@ -59,6 +59,7 @@ set(MOD_SOURCES
     src/ue_reflect.cpp
     src/ue_vm.cpp
     src/config.cpp
+    src/legacy_config/legacy_config.cpp
     src/crash_report.cpp
     src/builds/build_registry.cpp
     src/builds/itch_offsets.cpp
@@ -250,6 +251,7 @@ if(VOTV_BUILD_TESTS)
     add_executable(votv_config_tests
         tests/config_tests.cpp
         src/config.cpp
+        src/legacy_config/legacy_config.cpp
     )
     target_include_directories(votv_config_tests PRIVATE
         src
@@ -313,4 +315,57 @@ if(VOTV_BUILD_TESTS)
         tests
     )
     add_test(NAME votv_ue_call_frame_tests COMMAND votv_ue_call_frame_tests)
+
+    # The config differential test. The oracle is the newest published build's reader and
+    # hotkey registration with the core sources they compiled, copied verbatim into
+    # tests/config_differential/oracle. It is two libraries because hotkeys::Register has to
+    # run on oracle_fake's recording poller and keyboard while the reader runs on the real
+    # published IniReader; each renames the two namespaces its own way, so neither collides
+    # with the other or with the current core and mod.
+    set(VOTV_ORACLE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential/oracle)
+    add_library(votv_config_oracle STATIC
+        ${VOTV_ORACLE_DIR}/src/config.cpp
+        ${VOTV_ORACLE_DIR}/core/src/config/ini_reader.cpp
+        ${VOTV_ORACLE_DIR}/core/src/config/value_guards.cpp
+        ${VOTV_ORACLE_DIR}/core/src/logging/file_log.cpp
+        tests/config_differential/oracle_config_adapter.cpp
+    )
+    target_include_directories(votv_config_oracle PRIVATE
+        ${VOTV_ORACLE_DIR}/src
+        ${VOTV_ORACLE_DIR}/core/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential)
+    target_compile_definitions(votv_config_oracle PRIVATE
+        cameraunlock=votv_oracle_core
+        votv_ht=votv_oracle)
+
+    add_library(votv_hotkeys_oracle STATIC
+        ${VOTV_ORACLE_DIR}/src/mod_hotkeys.cpp
+        ${VOTV_ORACLE_DIR}/core/src/logging/file_log.cpp
+        tests/config_differential/oracle_hotkeys_adapter.cpp
+    )
+    target_include_directories(votv_hotkeys_oracle PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential/oracle_fake
+        ${VOTV_ORACLE_DIR}/src
+        ${VOTV_ORACLE_DIR}/core/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential)
+    target_compile_definitions(votv_hotkeys_oracle PRIVATE
+        cameraunlock=votv_oracle_hk_core
+        votv_ht=votv_oracle_hk)
+    target_compile_options(votv_hotkeys_oracle PRIVATE
+        /FI${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential/oracle_fake/fake_keyboard.h)
+
+    add_executable(votv_config_differential_tests
+        tests/config_differential/differential_tests.cpp
+        src/legacy_config/legacy_config.cpp
+    )
+    target_include_directories(votv_config_differential_tests PRIVATE
+        src
+        tests/config_differential
+        cameraunlock-core/cpp/include
+    )
+    target_compile_definitions(votv_config_differential_tests PRIVATE
+        VOTV_DIFFERENTIAL_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential/data")
+    target_link_libraries(votv_config_differential_tests PRIVATE
+        cameraunlock votv_config_oracle votv_hotkeys_oracle)
+    add_test(NAME votv_config_differential_tests COMMAND votv_config_differential_tests)
 endif()

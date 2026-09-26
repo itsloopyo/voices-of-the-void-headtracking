@@ -19,7 +19,10 @@ setup = { cmd = """
 build = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
 build-debug = { cmd = "cmake --build build --config Debug", depends-on = ["setup"] }
 
-test = { cmd = "ctest --test-dir build -C Release --output-on-failure", depends-on = ["build"] }
+# The behaviour tests, the frozen config reader and the config differential test against the
+# published build. The provenance check first: the differential test proves nothing once a file
+# it compiles has moved.
+test = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-differential-provenance.ps1 && ctest --test-dir build -C Release --output-on-failure", depends-on = ["build"] }
 
 clean = { cmd = """
     powershell -Command "if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; Write-Host 'Build artifacts cleaned' -ForegroundColor Green"
@@ -37,7 +40,7 @@ update-deps = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scrip
 # Package the installer ZIP. One ZIP only: the .asi deploys next to the game
 # exe, where no mod manager can put it, so this mod is installer-only and has
 # no Nexus ZIP.
-package = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build"] }
+package = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build", "test"] }
 
 # Full release workflow: stamp version, changelog, package, commit, tag, push.
 # Unattended - `pixi run release minor` is the authorization, there is no prompt.
