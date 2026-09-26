@@ -6,7 +6,7 @@
 #include <cstdint>
 
 // A detour on UObject::ProcessEvent that hands chosen UFunctions to the mod
-// after the engine has run them. Blueprint events are dispatched through
+// before or after the engine runs them. Blueprint events are dispatched through
 // ProcessEvent whether or not a blueprint implements them, which makes it a
 // per-frame callback site that needs no RVA beyond ProcessEvent itself.
 namespace votv_ht::process_event_hook {
@@ -24,6 +24,7 @@ void Shutdown();
 
 // Register a handler for one UFunction. Game thread. At most eight handlers.
 bool AddPostHandler(std::uintptr_t function, Handler handler);
+bool AddPreHandler(std::uintptr_t function, Handler handler);
 
 // Dev: call `observer` for every ProcessEvent until cleared with nullptr.
 void SetObserver(Handler observer);

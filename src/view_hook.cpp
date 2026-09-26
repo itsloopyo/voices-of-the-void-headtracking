@@ -401,7 +401,8 @@ std::uintptr_t ApplyFrame(std::uintptr_t controller, std::uintptr_t retRva, ue4:
         g_poseSinceMs = 0;
         g_leanClamp.Reset();
         reticle::Publish(controller, rig.Pawn, false, 0.0f, 0.0f);
-        flashlight::Update(rig.Player, false, FQuat4d{0.0, 0.0, 0.0, 1.0}, g_deps.config->light);
+        flashlight::Update(rig.Player, false, FQuat4d{0.0, 0.0, 0.0, 1.0},
+                           FVector{0.0, 0.0, 0.0}, g_deps.config->light);
         g_lastAim = Sample(aim.Origin, aim.Direction, report, *outLocation);
         NoteLeanState(report);
         hook_log::Heartbeat(report, retRva);
@@ -438,6 +439,8 @@ std::uintptr_t ApplyFrame(std::uintptr_t controller, std::uintptr_t retRva, ue4:
     flashlight::Update(rig.Player, !rig.Riding,
                        ue::QuatMul(ue::QuatFromEulerDeg(rotation.Pitch, rotation.Yaw, rotation.Roll),
                                    ue::QuatInv(cleanQ)),
+                       FVector{eye.X - cleanLocation.X, eye.Y - cleanLocation.Y,
+                               eye.Z - cleanLocation.Z},
                        g_deps.config->light);
 
     if (hit.Valid && FrameTangents(report.RenderFov, report.TanX, report.TanY))

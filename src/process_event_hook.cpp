@@ -26,6 +26,7 @@ constexpr int kMaxHandlers = 8;
 struct Entry {
     std::atomic<std::uintptr_t> Function{0};
     std::atomic<Handler> Callback{nullptr};
+    std::atomic<bool> Before{false};
 };
 Entry g_entries[kMaxHandlers];
 std::atomic<int> g_count{0};
@@ -48,6 +49,15 @@ thread_local int t_depth = 0;
 void __fastcall Detour(void* self, void* function, void* params) {
     ++t_depth;
     __try {
+        const auto fn = reinterpret_cast<std::uintptr_t>(function);
+        const int count = g_count.load(std::memory_order_relaxed);
+        for (int i = 0; i < count; ++i) {
+            if (!g_entries[i].Before.load(std::memory_order_relaxed) ||
+                g_entries[i].Function.load(std::memory_order_relaxed) != fn)
+                continue;
+            const Handler h = g_entries[i].Callback.load(std::memory_order_relaxed);
+            if (h) h(reinterpret_cast<std::uintptr_t>(self), fn, params);
+        }
         g_original(self, function, params);
     } __finally {
         --t_depth;
@@ -67,6 +77,7 @@ void __fastcall Detour(void* self, void* function, void* params) {
         o(reinterpret_cast<std::uintptr_t>(self), fn, params);
     const int count = g_count.load(std::memory_order_relaxed);
     for (int i = 0; i < count; ++i) {
+        if (g_entries[i].Before.load(std::memory_order_relaxed)) continue;
         if (g_entries[i].Function.load(std::memory_order_relaxed) != fn) continue;
         const Handler h = g_entries[i].Callback.load(std::memory_order_relaxed);
         if (h) h(reinterpret_cast<std::uintptr_t>(self), fn, params);
@@ -132,13 +143,22 @@ void Shutdown() {
     g_target = nullptr;
 }
 
-bool AddPostHandler(std::uintptr_t function, Handler handler) {
+static bool AddHandler(std::uintptr_t function, Handler handler, bool before) {
     const int index = g_count.load();
     if (!function || index >= kMaxHandlers) return false;
     g_entries[index].Function.store(function);
     g_entries[index].Callback.store(handler);
+    g_entries[index].Before = before;
     g_count.store(index + 1);
     return true;
+}
+
+bool AddPostHandler(std::uintptr_t function, Handler handler) {
+    return AddHandler(function, handler, false);
+}
+
+bool AddPreHandler(std::uintptr_t function, Handler handler) {
+    return AddHandler(function, handler, true);
 }
 
 void SetObserver(Handler observer) { g_observer.store(observer); }
