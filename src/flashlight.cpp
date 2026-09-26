@@ -21,10 +21,6 @@ namespace ue = ::cameraunlock::unreal;
 
 constexpr std::size_t kInternalIndexOffset = 0x0c;
 
-// The beam turns this many times as far as the head does, so it reaches what
-// the player is turning towards ahead of the view.
-constexpr double kHeadTurnGain = 1.5;
-
 ue_vm::ResolveRetry g_retry;
 bool g_resolved = false;
 ue_call::Function g_getWorldRotation;   // SceneComponent::K2_GetComponentRotation
@@ -138,28 +134,29 @@ void Release() {
 
 }  // namespace
 
-void Update(std::uintptr_t player, bool apply, const ue::FQuat4d& headDelta) {
+void Update(std::uintptr_t player, bool apply, const ue::FQuat4d& headDelta,
+            const cameraunlock::effects::HeadFollowLightSettings& light) {
     if (!Resolve()) return;
     Release();
-    if (!apply || !player) return;
+    if (!apply || !light.follows_head || !player) return;
 
-    const std::uintptr_t light = FindLight(player);
-    if (!light) return;
-    if (light != g_light.Component) {
+    const std::uintptr_t component = FindLight(player);
+    if (!component) return;
+    if (component != g_light.Component) {
         std::uint32_t index = 0;
-        if (!ue::SafeReadU32(light + kInternalIndexOffset, index)) return;
+        if (!ue::SafeReadU32(component + kInternalIndexOffset, index)) return;
         g_light = Light{};
-        g_light.Component = light;
+        g_light.Component = component;
         g_light.Index = static_cast<std::int32_t>(index);
     }
 
     ue_call::Frame get(g_getWorldRotation);
-    if (!ReadRelative(light, g_light.Base) || !get.Call(light)) return;
+    if (!ReadRelative(component, g_light.Base) || !get.Call(component)) return;
     const ue4::FRotator world = get.Get<ue4::FRotator>(0);
-    const ue::FQuat4d turned = ue::QuatMul(ScaleTurn(headDelta, kHeadTurnGain),
+    const ue::FQuat4d turned = ue::QuatMul(ScaleTurn(headDelta, light.multiplier),
                                            ue::QuatFromEulerDeg(world.Pitch, world.Yaw, world.Roll));
-    if (!SetRotation(g_setWorldRotation, light, ue4::FromCore(ue::QuatToRotator(turned)))) return;
-    g_light.Turned = ReadRelative(light, g_light.Written);
+    if (!SetRotation(g_setWorldRotation, component, ue4::FromCore(ue::QuatToRotator(turned)))) return;
+    g_light.Turned = ReadRelative(component, g_light.Written);
 }
 
 }  // namespace votv_ht::flashlight

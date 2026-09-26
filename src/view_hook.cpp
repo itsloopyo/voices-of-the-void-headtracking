@@ -187,7 +187,7 @@ void NoteLeanState(FrameReport& report) {
 }
 
 // As much of the wanted lean as the level leaves room for, swept from the CLEAN
-// eye. Passed through untouched when the clamp is switched off in the INI.
+// eye. Passed through untouched when CollisionEnabled switches the clamp off.
 FVector ClampLean(const FVector& cleanLocation, const FVector& wanted, float dt,
                   std::uintptr_t pawn) {
     if (!g_deps.config->collision_enabled) return wanted;
@@ -384,7 +384,7 @@ void ApplyFrame(std::uintptr_t controller, std::uintptr_t retRva, ue4::FVector* 
         g_poseSinceMs = 0;
         g_leanClamp.Reset();
         reticle::Publish(controller, rig.Pawn, false, 0.0f, 0.0f);
-        flashlight::Update(rig.Player, false, FQuat4d{0.0, 0.0, 0.0, 1.0});
+        flashlight::Update(rig.Player, false, FQuat4d{0.0, 0.0, 0.0, 1.0}, g_deps.config->light);
         g_lastAim = Sample(aim.Origin, aim.Direction, report, *outLocation);
         NoteLeanState(report);
         hook_log::Heartbeat(report, retRva);
@@ -421,7 +421,8 @@ void ApplyFrame(std::uintptr_t controller, std::uintptr_t retRva, ue4::FVector* 
     // Riding, the flashlight is on a player whose camera is not the one drawn.
     flashlight::Update(rig.Player, !rig.Riding,
                        ue::QuatMul(ue::QuatFromEulerDeg(rotation.Pitch, rotation.Yaw, rotation.Roll),
-                                   ue::QuatInv(cleanQ)));
+                                   ue::QuatInv(cleanQ)),
+                       g_deps.config->light);
 
     if (hit.Valid && FrameTangents(report.RenderFov, report.TanX, report.TanY))
         report.Mark =
@@ -496,6 +497,7 @@ void __fastcall GetPlayerViewPoint_Hook(void* self, ue4::FVector* outLocation, u
 
 bool Install(const Dependencies& deps) {
     g_deps = deps;
+    g_trackingEnabled.store(deps.config->enable_on_startup);
     g_worldSpaceYaw.store(deps.config->world_space_yaw);
     g_injectMode.store(Offsets().kDefaultInjectMode);
 
@@ -510,13 +512,20 @@ bool Install(const Dependencies& deps) {
     ue::SetRuntime(base, base + mi.SizeOfImage, Offsets().UObjectGlobals);
 
     game_state::SetSoloOnly(deps.config->disable_in_multiplayer);
-    reticle::SetEnabled(deps.config->move_crosshair);
     aim_trace::SetTraceChannel(deps.config->aim_trace_channel);
-    lean_trace::SetMargin(deps.config->collision_margin);
-    lean_trace::SetChannel(deps.config->collision_channel);
+    lean_trace::SetMargin(deps.config->lean_clamp.skin);
+    // The canonical row passes the channel through unchecked, and the trace
+    // writes it into a one-byte ETraceTypeQuery, whose channels are 0 to 31.
+    int channel = deps.config->collision_channel;
+    if (channel < 0 || channel > 31) {
+        Log::Line("config: CollisionChannel=%d is not one of the game's trace channels (0 to 31) - "
+                  "the wall check uses channel 0", channel);
+        channel = 0;
+    }
+    lean_trace::SetChannel(channel);
     cameraunlock::camera::LeanClampSettings clamp;
     clamp.skin = 0.0f;  // lean_trace carries the margin along the surface normal
-    clamp.release_smoothing = deps.config->collision_release_smoothing;
+    clamp.release_smoothing = deps.config->lean_clamp.release_smoothing;
     g_leanClamp.SetSettings(clamp);
 
     auto& hm = cameraunlock::hooks::HookManager::Instance();

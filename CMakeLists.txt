@@ -113,7 +113,7 @@ set_target_properties(VoicesOfTheVoidHeadTracking PROPERTIES
 )
 
 # Behaviour locks for the pure-function parts: the caller gate, the axis
-# conversion, the projection, the trace frames, the config reader, the dev
+# conversion, the projection, the trace frames, the config, the dev
 # command channel's number parsing and the UDP link walk. Separate executables
 # that link none of the hook or Windows machinery, so `pixi run test` runs with
 # no game installed.
@@ -244,22 +244,41 @@ if(VOTV_BUILD_TESTS)
     target_link_libraries(votv_kismet_trace_tests PRIVATE cameraunlock cameraunlock_unreal)
     add_test(NAME votv_kismet_trace_tests COMMAND votv_kismet_trace_tests)
 
-    # What HeadTracking.ini is allowed to put into the camera. Writes real INI
+    # What the frozen HeadTracking.ini reader takes from a file. Writes real INI
     # files into a temp directory and reads them back through the same
-    # GetPrivateProfile* path the game uses, because that reader's parsing rules
-    # are the thing being pinned.
-    add_executable(votv_config_tests
-        tests/config_tests.cpp
-        src/config.cpp
+    # GetPrivateProfile* path every published build used, because that reader's
+    # parsing rules are the thing being pinned.
+    add_executable(votv_legacy_reader_tests
+        tests/config_differential/legacy_reader_tests.cpp
         src/legacy_config/legacy_config.cpp
     )
-    target_include_directories(votv_config_tests PRIVATE
+    target_include_directories(votv_legacy_reader_tests PRIVATE
         src
         tests
         cameraunlock-core/cpp/include
     )
-    target_link_libraries(votv_config_tests PRIVATE cameraunlock)
-    add_test(NAME votv_config_tests COMMAND votv_config_tests)
+    target_link_libraries(votv_legacy_reader_tests PRIVATE cameraunlock)
+    add_test(NAME votv_legacy_reader_tests COMMAND votv_legacy_reader_tests)
+
+    # CameraUnlock.ini: the committed file against the table, what the owner
+    # creates on a first start and on the first start after an update, and what a
+    # toggle's save changes. `--render-config <path>` is pixi run render-config.
+    add_executable(votv_canonical_config_tests
+        tests/canonical_config_tests.cpp
+        src/config.cpp
+        src/legacy_config/legacy_config.cpp
+    )
+    target_include_directories(votv_canonical_config_tests PRIVATE
+        src
+        tests
+        cameraunlock-core/cpp/include
+    )
+    target_compile_definitions(votv_canonical_config_tests PRIVATE
+        VOTV_COMMITTED_CONFIG="${CMAKE_CURRENT_SOURCE_DIR}/CameraUnlock.ini"
+        VOTV_DIFFERENTIAL_DATA="${CMAKE_CURRENT_SOURCE_DIR}/tests/config_differential/data"
+        VOTV_DEFAULTS_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/cameraunlock-core/data/fixtures/canonical-ini/global/Defaults.ini")
+    target_link_libraries(votv_canonical_config_tests PRIVATE cameraunlock)
+    add_test(NAME votv_canonical_config_tests COMMAND votv_canonical_config_tests)
 
     # The walk from an engine-supplied object index to its table slot, against a
     # synthetic object table in the test process's own memory - so the bounds
@@ -356,6 +375,7 @@ if(VOTV_BUILD_TESTS)
 
     add_executable(votv_config_differential_tests
         tests/config_differential/differential_tests.cpp
+        src/config.cpp
         src/legacy_config/legacy_config.cpp
     )
     target_include_directories(votv_config_differential_tests PRIVATE

@@ -40,7 +40,7 @@ void SetTrackingEnabled(bool enabled);
 // however the mouse has the camera pitched. false = camera-local yaw, which
 // leans the horizon on a pitched turn. camera_boundary::ApplyHeadPose is where
 // the two differ; this is the flag it branches on, seeded from
-// Config::world_space_yaw at startup and toggled by Page Down / Ctrl+Shift+H.
+// Config::world_space_yaw at startup and toggled by the YawModeKey list.
 bool WorldSpaceYaw();
 void SetWorldSpaceYaw(bool worldSpaceYaw);
 

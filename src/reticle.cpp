@@ -79,8 +79,6 @@ struct Panel {
 Panel g_panels[kMaxPanels];
 std::size_t g_panelCount = 0;
 
-bool g_enabled = true;
-
 ue_vm::ResolveRetry g_findRetry;
 // Whether the panels have been moved at least once, so the first move writes
 // the viewport and DPI it was made against and the rest stay silent.
@@ -391,10 +389,8 @@ void ReadBackPanels(std::uintptr_t controller, float askedX, float askedY, float
 
 }  // namespace
 
-void SetEnabled(bool enabled) { g_enabled = enabled; }
-
 void Publish(std::uintptr_t controller, std::uintptr_t pawn, bool valid, float ndcX, float ndcY) {
-    if (!g_enabled || !pawn || !Resolve() || !Bind()) return;
+    if (!pawn || !Resolve() || !Bind()) return;
     if (!valid) {
         Move(0.0f, 0.0f);
         return;

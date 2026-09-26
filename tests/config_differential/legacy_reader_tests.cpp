@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 itsloopyo
 
-// What HeadTracking.ini is allowed to put into the camera.
+// What the frozen HeadTracking.ini reader (src/legacy_config) takes from a
+// file, the reader every published build ran and the legacy import still runs.
 //
-// The INI is the one place a player's text becomes a float the render hook
-// multiplies a pose by, so it is a system boundary and every hazard belongs
-// here rather than downstream. Three of them are reachable from a single typo
-// and none of them used to be caught:
+// The INI was the one place a player's text became a float the render hook
+// multiplies a pose by, so the reader was a system boundary and every hazard
+// belonged there rather than downstream. Three of them are reachable from a
+// single typo:
 //
 //   - "nan" parses. A range test phrased as a rejection lets it through
 //     (a NaN fails both comparisons), and a NaN smoothing value or collision
@@ -18,7 +19,7 @@
 //   - "1e400" overflows to +inf.
 //
 // The suite writes real INI files into a temp directory and reads them back
-// through config::Load, because the reader underneath is
+// through legacy::Read, because the reader underneath is
 // GetPrivateProfileStringA and its behaviour is the thing being pinned.
 
 #include <cstdio>
@@ -26,18 +27,18 @@
 
 #include <windows.h>
 
-#include "config.h"
+#include "legacy_config/legacy_config.h"
 #include "test_harness.h"
 
 namespace {
 
-using votv_ht::Config;
+using votv_ht::legacy::Config;
 
 std::string TempDirectory() {
     char base[MAX_PATH] = {};
     const DWORD n = GetTempPathA(MAX_PATH, base);
     std::string dir(base, n);
-    dir += "gr_config_tests";
+    dir += "votv_legacy_reader_tests";
     CreateDirectoryA(dir.c_str(), nullptr);
     return dir;
 }
@@ -64,7 +65,7 @@ void WriteIni(const std::string& body) {
 Config Load(const std::string& body) {
     WriteIni(body);
     Config out;
-    votv_ht::config::Load(Directory(), out);
+    votv_ht::legacy::Read(IniPath(), out);
     return out;
 }
 
@@ -210,31 +211,6 @@ void TestAnUnbindableHotkeyFallsBack() {
     CHECK_MSG(c.yaw_mode_key == 0x22, "a key code the poller cannot watch must not be bound");
 }
 
-void TestTheDefaultFileIsNotOverwritten() {
-    WriteIni("[Tracking]\r\nLocalSmoothing=0.5\r\n");
-    votv_ht::config::WriteDefaultIfMissing(Directory());
-    Config out;
-    votv_ht::config::Load(Directory(), out);
-    CHECK_MSG(out.local_smoothing == 0.5f,
-              "WriteDefaultIfMissing must leave an existing INI alone");
-}
-
-void TestTheWrittenDefaultReadsBackAsTheDefaults() {
-    DeleteFileA(IniPath().c_str());
-    votv_ht::config::WriteDefaultIfMissing(Directory());
-    Config out;
-    votv_ht::config::Load(Directory(), out);
-    const Config d;
-    CHECK(out.udp_port == d.udp_port);
-    CHECK(out.local_smoothing == d.local_smoothing);
-    CHECK(out.remote_smoothing == d.remote_smoothing);
-    CHECK(out.collision_margin == d.collision_margin);
-    CHECK(out.collision_enabled == d.collision_enabled);
-    CHECK(out.world_space_yaw == d.world_space_yaw);
-    CHECK(out.disable_in_multiplayer == d.disable_in_multiplayer);
-    CHECK(out.yaw_mode_key == d.yaw_mode_key);
-}
-
 }  // namespace
 
 int main() {
@@ -255,8 +231,6 @@ int main() {
     TestAnEmptyValueKeepsItsDefault();
     TestAPortOutsideTheRangeFallsBack();
     TestAnUnbindableHotkeyFallsBack();
-    TestTheDefaultFileIsNotOverwritten();
-    TestTheWrittenDefaultReadsBackAsTheDefaults();
 
     DeleteFileA(IniPath().c_str());
     return gr_test::Report();

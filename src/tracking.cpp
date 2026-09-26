@@ -13,6 +13,8 @@
 #include "logging.h"
 #include "udp_link.h"
 
+#include "cameraunlock/tracking/tracking_mode.h"
+
 namespace votv_ht::tracking {
 
 namespace {
@@ -90,6 +92,10 @@ void Start(const Config& config) {
     g_session = std::make_unique<Session>(*g_receiver);
     g_session->SetLocalSmoothing(config.local_smoothing);
     g_session->SetRemoteSmoothing(config.remote_smoothing);
+    // The config table reads a pair that names no mode as its defaults, so the
+    // pair always decodes.
+    g_session->SetMode(
+        cameraunlock::DecodeTrackingMode(config.rotation_enabled, config.position_enabled).value());
 
     // The session picks between the local and remote smoothing values per
     // connection, re-read from the receiver on every Update(). Without this the

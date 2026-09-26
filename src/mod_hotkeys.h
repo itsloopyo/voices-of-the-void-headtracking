@@ -6,13 +6,16 @@
 #include "config.h"
 #include "session.h"
 
-// The mod's key bindings: the AGENTS.md nav-cluster defaults and their
-// Ctrl+Shift chord alternatives. Every binding does its work through view_hook
-// or the session and says what it did in the log, so this is the only place
-// that knows which key means what.
+// The mod's key bindings, one key list per action from CameraUnlock.ini
+// ([Hotkeys] ToggleKey, CycleTrackingModeKey and YawModeKey). Every binding does
+// its work through view_hook or the session and says what it did in the log, so
+// this is the only place that knows which action a list drives. The tracking
+// mode and the yaw mode are saved to CameraUnlock.ini the moment they change;
+// the on/off toggle changes this session only.
 namespace votv_ht::hotkeys {
 
-// Register the bindings and start polling. `session` must outlive the poller.
+// Register the bindings and start polling. `session` must outlive the poller,
+// and config::Load must have run.
 void Register(const Config& config, Session& session);
 
 // Stop the polling thread. Safe to call when nothing was registered.

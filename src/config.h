@@ -3,24 +3,24 @@
 
 #pragma once
 
+#include <functional>
 #include <string>
 
-// HeadTracking.ini, next to the game exe.
+#include "cameraunlock/config/config_owner.h"
+#include "cameraunlock/config/head_tracking_config.h"
+
+// CameraUnlock.ini, next to the game exe, in cameraunlock-core's canonical
+// format. The owner imports HeadTracking.ini, the file every earlier build read
+// from the same folder, once while CameraUnlock.ini is absent, and never writes
+// it.
 namespace votv_ht {
 
-struct Config {
-    // UDP port the tracker sends to. 4242 is the OpenTrack default.
-    int udp_port = 4242;
-
-    // Smoothing for a tracker on this machine (loopback) and for one on another
-    // device on the network. 0 = none, 1 = heaviest.
-    float local_smoothing = 0.0f;
-    float remote_smoothing = 0.15f;
-
-    int yaw_mode_key = 0x22;  // VK_NEXT (Page Down)
-
-    // True: head yaw turns about the world up axis (horizon stays level).
-    bool world_space_yaw = true;
+struct Config : cameraunlock::HeadTrackingConfig {
+    Config() {
+        // CollisionMargin is in centimetres here, the engine's unit, and lives in
+        // lean_clamp.skin; lean_trace carries it along the surface normal.
+        lean_clamp.skin = 15.0f;
+    }
 
     // Voices of the Void has no multiplayer mode, so this never fires today.
     // It stays on by default as the mod's own guarantee that it only ever moves
@@ -29,29 +29,10 @@ struct Config {
     // having to remember to switch it off.
     bool disable_in_multiplayer = true;
 
-    // Move the game's crosshair onto the point the interaction ray stops on.
-    // Off leaves it where the game laid it out, in the middle of the screen,
-    // which is where the player is pointing only while the head is centred.
-    bool move_crosshair = true;
-
-    // Keep a lean from putting the eye inside the level.
-    //
-    // On: verified in game. With the eye 20.1 cm from the garage door and a
-    // 40 cm forward lean asked for, the sweep on trace channel 0 logged
-    // `lean-clamp: holding the view off geometry (wanted 5.3cm, allowed 5.1cm)
-    // on baseBuilding_C Basev2Final / StaticMeshComponent base4segment_garage`
-    // - the margin below, to the millimetre - and the wall stayed drawn solid
-    // at that distance, so the standoff clears the near clip plane.
-    bool collision_enabled = true;
-    // Standoff from a surface in cm, along its normal; must exceed the near clip
-    // plane.
-    float collision_margin = 15.0f;
-    // ETraceTypeQuery index for the lean trace and the aim trace.
-    int collision_channel = 0;
+    // ETraceTypeQuery index for the aim trace.
     int aim_trace_channel = 0;
-    float collision_release_smoothing = 0.9f;
 
-    // Dev only.
+    // Dev only: read by a build configured with VOTV_DEV_COMMANDS.
     bool dev_commands = false;
 };
 
@@ -59,11 +40,28 @@ struct Config {
 
 namespace votv_ht::config {
 
-// Fill `out` from the INI; absent keys keep their defaults, out-of-range values
-// fall back to the default and say so in the log.
-void Load(const std::string& exe_dir, Config& out);
+constexpr const char* kDisplayName = "Voices of the Void";
+constexpr const wchar_t* kConfigFileName = L"CameraUnlock.ini";
+constexpr const wchar_t* kLegacyFileName = L"HeadTracking.ini";
 
-// Write a commented default INI unless one already exists.
-void WriteDefaultIfMissing(const std::string& exe_dir);
+cameraunlock::config::ConfigTable<Config> MakeTable();
+cameraunlock::config::LegacyImport<Config> MakeLegacyImport();
+
+// The owner's options for CameraUnlock.ini in `exe_dir`, with HeadTracking.ini
+// beside it as the legacy file. The mod passes the player's own Defaults.ini,
+// a test one at a scratch path.
+cameraunlock::config::ConfigOwnerOptions<Config> MakeOwnerOptions(
+    const std::wstring& exe_dir, cameraunlock::config::DefaultsFile defaults);
+
+// Build the process's owner for CameraUnlock.ini in `exe_dir`, load it, and
+// write every line the load returned to the log. Bootstrap thread, once, after
+// the log is open.
+Config Load(const std::wstring& exe_dir);
+
+// Apply-then-save for a toggle: the caller has applied the new value to the
+// running game; this writes it through the owner and logs what happened. A
+// failed save leaves the session running on the new value. Never from a
+// per-frame path.
+void Save(const std::function<void(Config&)>& change);
 
 }  // namespace votv_ht::config

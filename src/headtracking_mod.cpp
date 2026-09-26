@@ -72,23 +72,26 @@ bool CheckBuild() {
     return false;
 }
 
-// The INI, and the settings in it that have to be in force before the first
-// frame.
-void LoadSettings() {
-    // Empty means the game directory has no ANSI form, and the INI layer is
-    // ANSI-only (GetPrivateProfile*A). A relative path would put the file
-    // wherever the game was started from and a best-fit narrowing would put it
-    // in somebody else's folder, so the settings stay at their defaults and the
-    // log says why.
-    const std::string exeDir = cameraunlock::os::HostExeDirectoryNarrow();
+// CameraUnlock.ini, and the settings in it that have to be in force before the
+// first frame. Here and not in DllMain: the first load after an update imports
+// HeadTracking.ini and creates files, which must not happen under the loader
+// lock.
+//
+// False when the game's folder cannot be found, which also leaves the log
+// unopened: with nowhere to read settings from or save them to, the mod stays
+// dormant and the game runs unmodified.
+bool LoadSettings() {
+    const std::wstring exeDir = cameraunlock::os::HostExeDirectory();
     if (exeDir.empty()) {
-        Log::Line("config: the game directory has no ANSI form on this system, so "
-                  "HeadTracking.ini cannot be read or written - using defaults");
-        return;
+        OutputDebugStringW(L"VoicesOfTheVoidHeadTracking: the game's folder could not be found - "
+                           L"the mod is not running\n");
+        return false;
     }
-    config::WriteDefaultIfMissing(exeDir);
-    config::Load(exeDir, g_config);
-    dev_console::SetEnabled(g_config.dev_commands, exeDir);
+    g_config = config::Load(exeDir);
+    // The dev command file is found through the ANSI path; a folder with no
+    // ANSI form leaves the channel off.
+    dev_console::SetEnabled(g_config.dev_commands, cameraunlock::os::HostExeDirectoryNarrow());
+    return true;
 }
 
 DWORD WINAPI BootstrapThread(LPVOID) {
@@ -98,7 +101,7 @@ DWORD WINAPI BootstrapThread(LPVOID) {
     // uncatchable unless the handler is already in place when it fires.
     crash_report::Install();
     const bool haveProfile = CheckBuild();
-    LoadSettings();
+    if (!LoadSettings()) return 0;
 
     // Before the window wait, and unconditional. The link comes up on its own
     // schedule from here - a port another game is still holding is waited out

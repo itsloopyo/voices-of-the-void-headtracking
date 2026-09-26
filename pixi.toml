@@ -24,6 +24,10 @@ build-debug = { cmd = "cmake --build build --config Debug", depends-on = ["setup
 # it compiles has moved.
 test = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-differential-provenance.ps1 && ctest --test-dir build -C Release --output-on-failure", depends-on = ["build"] }
 
+# Rewrite the committed CameraUnlock.ini from the config table after a change to a
+# row, a comment or a default, then the launcher manifest's config descriptor.
+render-config = { cmd = "build/Release/votv_canonical_config_tests.exe --render-config CameraUnlock.ini && node cameraunlock-core/scripts/encode-seed.mjs", depends-on = ["build"] }
+
 clean = { cmd = """
     powershell -Command "if (Test-Path 'build') { Remove-Item 'build' -Recurse -Force }; Write-Host 'Build artifacts cleaned' -ForegroundColor Green"
 """ }

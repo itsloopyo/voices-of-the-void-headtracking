@@ -14,7 +14,7 @@
 //
 // Gameplay is the frame drawn from the player character's own first-person
 // camera component, with no cursor up, the game not paused, the pawn alive and
-// in ordinary control, and - unless the INI says otherwise - nobody else in the
+// in ordinary control, and - unless DisableInMultiplayer=false - nobody else in the
 // session. Anything unreadable reads as the blocking answer.
 //
 // A cutscene, a dream sequence and the sleep camera need no flag of their own:

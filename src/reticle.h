@@ -15,11 +15,6 @@
 // and no second one is drawn.
 namespace votv_ht::reticle {
 
-// Whether the crosshair is moved at all. Seeded from Config::move_crosshair at
-// startup; false leaves every crosshair where the game laid it out and binds
-// nothing.
-void SetEnabled(bool enabled);
-
 // Game thread. `controller` is the player controller, `pawn` the player
 // character. `valid` false puts the crosshair back where the game laid it out,
 // which is what every frame without a usable projection does. `ndcX` / `ndcY`

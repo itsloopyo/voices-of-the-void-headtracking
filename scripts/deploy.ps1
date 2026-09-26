@@ -9,8 +9,9 @@
 .DESCRIPTION
     Unattended: no prompts, exits non-zero with a diagnostic on any failure.
     Every copy Find-AllGamePaths reports is written to; a supplied path wins.
-    The mod writes its own default HeadTracking.ini on first launch, so no
-    config file is copied.
+    The mod creates CameraUnlock.ini itself on first launch, importing
+    HeadTracking.ini where an earlier build left one, so no config file is
+    copied.
 
 .PARAMETER GamePath
     Voices of the Void install root. Omit to deploy to every detected install.
