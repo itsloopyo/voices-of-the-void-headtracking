@@ -14,20 +14,15 @@
 //
 // Core owns what to do with the answer (cameraunlock/camera/lean_clamp.h); this
 // owns getting one. The query goes through the engine's own
-// UKismetSystemLibrary::LineTraceSingle, dispatched by name through the script
-// VM with its parameter frame read out of the engine's reflection data - the
-// same route aim_trace takes - so there is no second physics query in this mod
-// to disagree with the game's, and no RVA to re-pin every patch.
+// UKismetSystemLibrary::SphereTraceSingle with its parameter frame read from
+// the engine's reflection data.
 //
-// A LINE rather than a swept sphere. A sphere as wide as the margin reports an
-// overlap at zero distance whenever the clean eye already sits within that
-// radius of anything the player's capsule does not collide with, and the lean
-// then refuses to move in any direction, including away from it. A line only
-// answers along the lean, so the margin is carried here instead: the reported
-// distance is cut by the margin measured along the surface normal.
+// If the clean eye already overlaps the margin, reduce the sphere to its
+// existing clearance and repeat against the same geometry. This permits escape
+// without discarding other surfaces belonging to the overlapping actor.
 namespace votv_ht::lean_trace {
 
-// Distance held off a surface, in UE units (cm), measured along its normal.
+// Sphere radius, in UE units (cm).
 // Must exceed the camera's near clip distance or geometry is culled before the
 // eye reaches it and the wall goes transparent anyway.
 void SetMargin(float centimetres);

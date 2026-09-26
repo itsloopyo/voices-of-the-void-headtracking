@@ -50,7 +50,8 @@ set(MOD_SOURCES
     src/kismet_trace.cpp
     src/game_state.cpp
     src/lean_trace.cpp
-    src/footage_view.cpp
+    src/view_material.cpp
+    src/view_anchor.cpp
     src/flashlight.cpp
     src/dev_console.cpp
     src/dev/dev_commands.cpp

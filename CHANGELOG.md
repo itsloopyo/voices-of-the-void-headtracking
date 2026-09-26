@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Positional head tracking now works in the tutorial without replacing the view with a magenta checkerboard.
+- Lean collision checks cover corners and edges, and preserve room to lean away when the game's camera starts close to a surface.
+
 ### Changed
 
 - Settings move to `VotV\Binaries\Win64\CameraUnlock.ini`. Earlier versions of the mod kept these settings in `HeadTracking.ini`, in the same folder. The first time this version starts and finds no `CameraUnlock.ini`, it reads your settings from `HeadTracking.ini` and writes them into `CameraUnlock.ini`. It never changes `HeadTracking.ini`, and does not read it again while `CameraUnlock.ini` exists.

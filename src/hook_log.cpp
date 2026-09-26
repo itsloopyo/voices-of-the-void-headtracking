@@ -132,7 +132,7 @@ void LeanClamp(const cameraunlock::math::Vec3& wanted, const cameraunlock::math:
 
     if (queryFailed != s_failed) {
         s_failed = queryFailed;
-        Log::Line("lean-clamp: sweep %s", queryFailed ? "FAILED - the lean is running unclamped"
+        Log::Line("lean-clamp: sweep %s", queryFailed ? "FAILED - positional lean withheld"
                                                       : "working again");
     }
     if (inContact != s_contact) {

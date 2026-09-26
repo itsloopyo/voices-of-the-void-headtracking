@@ -31,7 +31,6 @@
 #include "camera_fov.h"
 #include "dev_console.h"
 #include "flashlight.h"
-#include "footage_view.h"
 #include "frame_report.h"
 #include "game_state.h"
 #include "hook_log.h"
@@ -46,6 +45,8 @@
 #include "ue4_types.h"
 #include "ue_call.h"
 #include "ue_vm.h"
+#include "view_anchor.h"
+#include "view_material.h"
 #include "window_centering.h"
 
 #include "cameraunlock/camera/lean_clamp.h"
@@ -94,6 +95,7 @@ struct FrameCache {
     ue4::FRotator CleanRotation{0.0f, 0.0f, 0.0f};
     ue4::FVector OutLocation{0.0f, 0.0f, 0.0f};
     ue4::FRotator OutRotation{0.0f, 0.0f, 0.0f};
+    std::uintptr_t Player = 0;
 };
 FrameCache g_frameCache;
 AimSample g_lastAim;
@@ -201,6 +203,7 @@ FVector ClampLean(const FVector& cleanLocation, const FVector& wanted, float dt,
     const cameraunlock::math::Vec3 allowed =
         g_leanClamp.Apply(from, want, dt, &lean_trace::Query, nullptr);
     hook_log::LeanClamp(want, allowed, g_leanClamp.LastQueryFailed(), g_leanClamp.InContact());
+    if (g_leanClamp.LastQueryFailed()) return FVector{0.0, 0.0, 0.0};
     return FVector{allowed.x, allowed.y, allowed.z};
 }
 
@@ -218,9 +221,20 @@ aim_projection::Ndc ProjectMark(const ue4::FVector& eye, const ue4::FRotator& dr
                    : aim_projection::ProjectDirection(view, aimDir);
 }
 
+bool UpdateViewEffects(std::uintptr_t controller, std::uintptr_t player,
+                       const ue4::FVector& clean, const ue4::FVector& eye) {
+    if (!player) return true;
+    if (!view_anchor::Update(controller, {eye.X - clean.X, eye.Y - clean.Y, eye.Z - clean.Z}))
+        return false;
+    if (view_material::Update(player, eye)) return true;
+    view_anchor::Update(controller, {0.0f, 0.0f, 0.0f});
+    return false;
+}
+
 // True when this call is the render caller repeating inside one engine frame, in
 // which case it is handed that frame's view back rather than a second pose.
-bool ReplayFrame(bool haveFrame, std::int64_t engineFrame, const ue4::FVector& cleanLocation,
+bool ReplayFrame(std::uintptr_t controller, bool haveFrame, std::int64_t engineFrame,
+                 const ue4::FVector& cleanLocation,
                  const ue4::FRotator& cleanRotation, ue4::FVector* outLocation,
                  ue4::FRotator* outRotation) {
     if (!haveFrame || !g_frameCache.Valid || engineFrame != g_frameCache.Frame ||
@@ -229,6 +243,9 @@ bool ReplayFrame(bool haveFrame, std::int64_t engineFrame, const ue4::FVector& c
         return false;
     *outLocation = g_frameCache.OutLocation;
     *outRotation = g_frameCache.OutRotation;
+    // The game can refresh the material between repeated view queries.
+    if (!UpdateViewEffects(controller, g_frameCache.Player, cleanLocation, *outLocation))
+        *outLocation = cleanLocation;
     static bool s_logged = false;
     if (!s_logged) {
         s_logged = true;
@@ -331,8 +348,8 @@ void PublishMark(std::uintptr_t controller, std::uintptr_t pawn, FrameReport& re
 }
 
 // One render frame, from the clean view the engine handed back to the view the
-// player sees. Everything it changes goes through outLocation / outRotation.
-void ApplyFrame(std::uintptr_t controller, std::uintptr_t retRva, ue4::FVector* outLocation,
+// player sees.
+std::uintptr_t ApplyFrame(std::uintptr_t controller, std::uintptr_t retRva, ue4::FVector* outLocation,
                 ue4::FRotator* outRotation, const ue4::FVector& cleanLocationRaw,
                 const ue4::FRotator& cleanRaw, std::uint64_t tick) {
     FrameReport report;
@@ -388,18 +405,11 @@ void ApplyFrame(std::uintptr_t controller, std::uintptr_t retRva, ue4::FVector* 
         g_lastAim = Sample(aim.Origin, aim.Direction, report, *outLocation);
         NoteLeanState(report);
         hook_log::Heartbeat(report, retRva);
-        return;
+        UpdateViewEffects(controller, rig.Player, cleanLocationRaw, *outLocation);
+        return rig.Player;
     }
 
-    bool havePosition = ReadHeadPosition(session, pose);
-    // Zeroed rather than just left unapplied, so the heartbeat's pose and the
-    // offset it reports agree with what the frame was drawn from.
-    if (havePosition && footage_view::BlocksLean(controller)) {
-        pose.x = 0.0f;
-        pose.y = 0.0f;
-        pose.z = 0.0f;
-        havePosition = false;
-    }
+    const bool havePosition = ReadHeadPosition(session, pose);
 
     if (g_poseSinceMs == 0) g_poseSinceMs = tick;
     pose_shaping::ShapePose(pose, pose_shaping::EntryEase(tick - g_poseSinceMs),
@@ -414,8 +424,14 @@ void ApplyFrame(std::uintptr_t controller, std::uintptr_t retRva, ue4::FVector* 
     camera_boundary::ApplyHeadPose(rotation, pose.yaw, pose.pitch, pose.roll,
                                    g_worldSpaceYaw.load(std::memory_order_relaxed) &&
                                        !rig.Riding);
-    const FVector eye =
+    FVector eye =
         LeanedEye(cleanLocation, cleanQ, pose, havePosition, dt, rig.Pawn, report);
+    if (!UpdateViewEffects(controller, rig.Player, cleanLocationRaw, ue4::FromCore(eye))) {
+        eye = cleanLocation;
+        report.PositionOffset = FVector{0.0, 0.0, 0.0};
+        report.Applied.x = report.Applied.y = report.Applied.z = 0.0f;
+        g_leanClamp.Reset();
+    }
     *outRotation = ue4::FromCore(rotation);
     *outLocation = ue4::FromCore(eye);
     // Riding, the flashlight is on a player whose camera is not the one drawn.
@@ -433,6 +449,7 @@ void ApplyFrame(std::uintptr_t controller, std::uintptr_t retRva, ue4::FVector* 
 
     NoteLeanState(report);
     hook_log::Heartbeat(report, retRva);
+    return rig.Player;
 }
 
 // The pass's own cost and the gap since the last one, for hook_log::FrameCost.
@@ -479,18 +496,19 @@ void __fastcall GetPlayerViewPoint_Hook(void* self, ue4::FVector* outLocation, u
     const ue4::FVector cleanLocationRaw = *outLocation;
     std::int64_t engineFrame = 0;
     const bool haveFrame = EngineFrame(engineFrame);
-    if (ReplayFrame(haveFrame, engineFrame, cleanLocationRaw, cleanRaw, outLocation, outRotation))
+    if (ReplayFrame(controller, haveFrame, engineFrame, cleanLocationRaw, cleanRaw,
+                    outLocation, outRotation))
         return;
 
     LARGE_INTEGER before{}, after{};
     QueryPerformanceCounter(&before);
-    ApplyFrame(controller, retRva, outLocation, outRotation, cleanLocationRaw, cleanRaw,
-               GetTickCount64());
+    const auto player = ApplyFrame(controller, retRva, outLocation, outRotation, cleanLocationRaw,
+                                   cleanRaw, GetTickCount64());
     QueryPerformanceCounter(&after);
     NoteFrameCost(before.QuadPart, after.QuadPart);
 
     g_frameCache = FrameCache{haveFrame, engineFrame,  cleanLocationRaw,
-                              cleanRaw,  *outLocation, *outRotation};
+                              cleanRaw,  *outLocation, *outRotation, player};
 }
 
 }  // namespace
@@ -524,7 +542,7 @@ bool Install(const Dependencies& deps) {
     }
     lean_trace::SetChannel(channel);
     cameraunlock::camera::LeanClampSettings clamp;
-    clamp.skin = 0.0f;  // lean_trace carries the margin along the surface normal
+    clamp.skin = 0.0f;  // The swept sphere already carries the collision margin.
     clamp.release_smoothing = deps.config->lean_clamp.release_smoothing;
     g_leanClamp.SetSettings(clamp);
 
