@@ -13,9 +13,10 @@
 // frame from the live controller, never latched.
 //
 // Gameplay is the frame drawn from the player character's own first-person
-// camera component, with no cursor up, the game not paused, the pawn alive and
-// in ordinary control, and - unless DisableInMultiplayer=false - nobody else in the
-// session. Anything unreadable reads as the blocking answer.
+// camera component, with no menu up, the game not paused, the pawn alive and
+// in ordinary control or using a 3D interface, and - unless
+// DisableInMultiplayer=false - nobody else in the session.
+// Anything unreadable reads as the blocking answer.
 //
 // A cutscene, a dream sequence and the sleep camera need no flag of their own:
 // each hands the view to a camera that is not the pawn's, which the last check
@@ -31,6 +32,15 @@ enum class Blocker {
     NotInControl,
     NotFirstPerson,
 };
+
+inline Blocker ControlBlocker(const player_rig::Snapshot& rig, bool cursor, bool paused) {
+    if (cursor && !rig.WorldInterface) return Blocker::Cursor;
+    if (paused) return Blocker::Paused;
+    if (!rig.HaveState || rig.Dead || rig.Ragdoll || rig.WakingUp ||
+        (rig.MouseInputOff && !rig.WorldInterface))
+        return Blocker::NotInControl;
+    return Blocker::None;
+}
 
 struct Verdict {
     bool InGameplay = false;

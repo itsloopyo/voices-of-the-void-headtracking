@@ -41,8 +41,6 @@ void TestTheOrderTheGateIsAskedIn() {
     CHECK(DecideTracking(Gate(true), true, false) == TrackingVerdict::NoTracker);
 }
 
-// Voices of the Void is a four-player co-op game, and the mod stands down the
-// moment anyone else is in the session. Solo is exactly one player state.
 void TestOnlyOnePlayerStateIsSolo() {
     CHECK_MSG(!game_state::SessionIsShared(1), "one player state is solo");
     CHECK_MSG(game_state::SessionIsShared(2), "two players is a shared session");
@@ -50,6 +48,29 @@ void TestOnlyOnePlayerStateIsSolo() {
     CHECK_MSG(game_state::SessionIsShared(0), "an empty game state is not solo either");
     CHECK_MSG(game_state::SessionIsShared(-1),
               "a count that did not read leaves the game stock");
+}
+
+void TestWorldInterfacesKeepTrackingWithoutOpeningMenusOrIncapacitatedStates() {
+    using game_state::Blocker;
+    using game_state::ControlBlocker;
+    player_rig::Snapshot rig;
+    rig.HaveState = true;
+    CHECK(ControlBlocker(rig, false, false) == Blocker::None);
+    CHECK(ControlBlocker(rig, true, false) == Blocker::Cursor);
+    rig.MouseInputOff = true;
+    CHECK(ControlBlocker(rig, false, false) == Blocker::NotInControl);
+    rig.WorldInterface = true;
+    CHECK(ControlBlocker(rig, true, false) == Blocker::None);
+    CHECK(ControlBlocker(rig, false, false) == Blocker::None);
+    CHECK(ControlBlocker(rig, true, true) == Blocker::Paused);
+    bool* states[] = {&rig.Dead, &rig.Ragdoll, &rig.WakingUp};
+    for (bool* state : states) {
+        *state = true;
+        CHECK(ControlBlocker(rig, true, false) == Blocker::NotInControl);
+        *state = false;
+    }
+    rig.HaveState = false;
+    CHECK(ControlBlocker(rig, true, false) == Blocker::NotInControl);
 }
 
 void TestEveryVerdictHasItsLogReason() {
@@ -65,6 +86,7 @@ int main() {
     TestOnlyAFullyOpenGateApplies();
     TestTheOrderTheGateIsAskedIn();
     TestOnlyOnePlayerStateIsSolo();
+    TestWorldInterfacesKeepTrackingWithoutOpeningMenusOrIncapacitatedStates();
     TestEveryVerdictHasItsLogReason();
     return gr_test::Report();
 }

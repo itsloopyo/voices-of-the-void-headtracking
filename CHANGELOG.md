@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Head tracking stays active at the signal scanner and generator puzzles, allowing you to look around panels on ultrawide displays.
 - Positional head tracking now works in the tutorial without replacing the view with a magenta checkerboard.
 - Lean collision checks cover corners and edges, and preserve room to lean away when the game's camera starts close to a surface.
 - The flashlight and its shadows now follow positional lean as well as head rotation.

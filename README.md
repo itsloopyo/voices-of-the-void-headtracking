@@ -270,7 +270,7 @@ A windowed game is moved once to the center of the desktop work area on the moni
 
 **No tracking response:**
 
-- You are in a menu, the pause menu, a screen you are typing on, asleep, or loading. By design the view is left alone in all of those, and the log names which one.
+- Tracking pauses in menus, inventory, while asleep, and while loading. It stays active at the signal scanner and generator puzzles so you can look around their panels.
 - Something else has the tracker port. `link: UDP 4242 waiting-for-port` is the mod waiting for it, and the `udp: Failed to bind UDP port 4242` line above it carries the reason Windows gave. Error 10048 is another program already on the port, usually a game left running - close it and the mod takes the port on its next retry, under a second later, without you restarting anything.
 - `link: UDP 4242 listening` with no `receiving` line after it means nothing is sending to the port. Check the tracker is running and pointed at this machine on the port `UdpPort` sets in `CameraUnlock.ini`.
 - Check tracking is not switched off with `End` or `Ctrl+Shift+Y`.

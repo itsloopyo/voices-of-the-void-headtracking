@@ -384,11 +384,10 @@ std::uintptr_t ApplyFrame(std::uintptr_t controller, std::uintptr_t retRva, ue4:
     report.TrackingEnabled = g_trackingEnabled.load(std::memory_order_relaxed);
     report.Verdict = DecideTracking(report.Gate, report.TrackingEnabled, report.HavePose);
 
-    // Cast in every gameplay frame, not only tracked ones, so the log compares
-    // like with like.
+    // World interfaces own their cursor; the aim mark must not reposition it.
     const AimRay aim = ReadAimRay(rig, cleanLocation, cleanQ);
     aim_trace::Result hit;
-    if (report.Gate.InGameplay) {
+    if (report.Gate.InGameplay && !rig.WorldInterface) {
         hit = aim_trace::Cast(rig.Pawn, aim.Origin, aim.Direction, kMaxTraceCm);
         report.TraceValid = hit.Valid;
         report.TraceHit = hit.Hit;

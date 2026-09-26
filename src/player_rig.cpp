@@ -59,6 +59,8 @@ struct PlayerFields {
     ue_reflect::FieldInfo Ragdoll;
     ue_reflect::FieldInfo WakingUp;
     ue_reflect::FieldInfo MouseOff;
+    ue_reflect::FieldInfo Interface3D;
+    ue_reflect::FieldInfo ActiveInterface;
 };
 PlayerFields g_player;
 
@@ -172,9 +174,12 @@ void RefreshPlayerFields(std::uintptr_t player) {
         {"isRagdoll", &g_player.Ragdoll},
         {"isWakingUp", &g_player.WakingUp},
         {"deactivateMouseInput", &g_player.MouseOff},
+        {"isActiveINterface3D", &g_player.Interface3D},
     };
     for (const auto& f : flags)
         if (!OptionalBool(cls, f.first, *f.second)) missing += std::string(" ") + f.first;
+    if (!PointerField(cls, "activeInterface", g_player.ActiveInterface))
+        missing += " activeInterface";
     Log::Line("player-rig: state flags on %s%s", ue::ObjectName(cls).c_str(),
               missing.empty() ? " all found" : (" MISSING:" + missing).c_str());
 }
@@ -282,6 +287,11 @@ Snapshot Read(std::uintptr_t controller) {
     ue_reflect::ReadBool(player, g_player.Ragdoll, s.Ragdoll);
     ue_reflect::ReadBool(player, g_player.WakingUp, s.WakingUp);
     ue_reflect::ReadBool(player, g_player.MouseOff, s.MouseInputOff);
+    bool interface3D = false;
+    // The 3D flag remains set after closing a panel; the active object does not.
+    s.WorldInterface = !s.Riding &&
+        ue_reflect::ReadBool(player, g_player.Interface3D, interface3D) && interface3D &&
+        ReadPointer(player, g_player.ActiveInterface) != 0;
     return s;
 }
 

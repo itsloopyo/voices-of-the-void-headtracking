@@ -191,21 +191,19 @@ Verdict Evaluate(std::uintptr_t controller, const player_rig::Snapshot& rig,
 
     RefreshControllerFields(controller);
     bool cursor = true;
-    if (!ue_reflect::ReadBool(controller, g_controllerFields.Cursor, cursor) || cursor) {
+    if (!ue_reflect::ReadBool(controller, g_controllerFields.Cursor, cursor)) {
         v.Why = Blocker::Cursor;
         return v;
     }
 
     bool paused = true;
-    if (!AskFlag(g_isGamePaused, g_staticsCdo, 1, paused, controller) || paused) {
+    if (!AskFlag(g_isGamePaused, g_staticsCdo, 1, paused, controller)) {
         v.Why = Blocker::Paused;
         return v;
     }
 
-    if (!rig.HaveState || rig.Dead || rig.Ragdoll || rig.WakingUp || rig.MouseInputOff) {
-        v.Why = Blocker::NotInControl;
-        return v;
-    }
+    v.Why = ControlBlocker(rig, cursor, paused);
+    if (v.Why != Blocker::None) return v;
 
     const ue::FVector& cam = rig.Camera.Position;
     if (!SamePoint(cam, g_camNow)) {

@@ -40,14 +40,14 @@ struct Snapshot {
     // The possessed pawn's own Camera component. Gameplay is drawn from it; a
     // cutscene or a death/sleep camera is drawn from somewhere else.
     Transform Camera;
-    // States the player reports that mean they are not in ordinary control:
-    // dead, ragdolled, waking up out of bed, or with mouse input handed to a
-    // UI (the in-game computer, the tablet).
+    // Mouse input can belong to an interface while the view remains first person.
     bool HaveState = false;
     bool Dead = false;
     bool Ragdoll = false;
     bool WakingUp = false;
     bool MouseInputOff = false;
+    // Both the game's 3D-interface flag and a non-null active interface.
+    bool WorldInterface = false;
     // The un-zoomed field of view the pose is scaled against, in degrees.
     // mainPlayer_C drives its zoom through the `Zoom` timeline and ATV_C
     // through `Timeline`, and both write their own CameraComponent's
