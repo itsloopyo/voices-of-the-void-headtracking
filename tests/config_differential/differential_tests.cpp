@@ -17,6 +17,12 @@
 // [Dev] DevCommands is read and not carried: only a build configured with VOTV_DEV_COMMANDS
 // reads it, and no published build was, so it did nothing for any player.
 //
+// A setting the player never changed from what the published build shipped follows Defaults.ini
+// (owner rule of 2026-09-26): the import lists exactly those rows in follows_defaults_ini, and a
+// third migration of every input, over a Defaults.ini that differs from the built-in value on
+// every global row the table binds, writes each of them `default` and runs on Defaults.ini's
+// value, while every row the player changed runs on the value the first migration carried.
+//
 // Also asserted after every load: HeadTracking.ini keeps its bytes, last write time and
 // attributes, the folder holds it and CameraUnlock.ini and nothing else, a read-only copy
 // migrates as a writable one does, the migrated file draws no diagnostic, and a second load
@@ -32,6 +38,7 @@
 
 #include "cameraunlock/config/canonical_ini.h"
 #include "cameraunlock/config/config_owner.h"
+#include "cameraunlock/config/ini_editor.h"
 #include "cameraunlock/config/testing/ini_mutations.h"
 #include "cameraunlock/input/key_binding_registration.h"
 #include "cameraunlock/input/key_bindings.h"
@@ -48,6 +55,7 @@
 #include <functional>
 #include <iterator>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -221,7 +229,7 @@ public:
     // folders on disk at a time rather than thousands.
     void Clear() {
         for (const auto& dir : fs::directory_iterator(root_)) {
-            if (dir.path().filename() == "global") continue;
+            if (dir.path().filename() == "global" || dir.path().filename() == "skewed") continue;
             for (const auto& e : fs::recursive_directory_iterator(dir.path())) {
                 if (e.is_regular_file()) SetFileAttributesW(e.path().c_str(), FILE_ATTRIBUTE_NORMAL);
             }
@@ -235,9 +243,8 @@ public:
     }
     // One Defaults.ini for every owner, created by the first at the built-in values.
     fs::path DefaultsPath() const { return root_ / "global" / "Defaults.ini"; }
-    cameraunlock::config::DefaultsFile Defaults() const {
-        return cameraunlock::config::DefaultsFile::At(DefaultsPath().wstring());
-    }
+    // A Defaults.ini that differs from the built-in values on every row that follows it.
+    fs::path SkewedPath() const { return root_ / "skewed" / "Defaults.ini"; }
 
 private:
     fs::path root_;
@@ -372,8 +379,9 @@ using cameraunlock::config::DroppedValue;
 using cameraunlock::config::ImportResult;
 using cameraunlock::config::ImportStatus;
 
-cameraunlock::config::ConfigLoadResult<Config> LoadOwner(const Scratch& scratch, const fs::path& dir) {
-    cameraunlock::config::ConfigOwner<Config> owner(config::MakeOwnerOptions(dir.wstring(), scratch.Defaults()));
+cameraunlock::config::ConfigLoadResult<Config> LoadOwner(const fs::path& defaults, const fs::path& dir) {
+    cameraunlock::config::ConfigOwner<Config> owner(
+        config::MakeOwnerOptions(dir.wstring(), cameraunlock::config::DefaultsFile::At(defaults.wstring())));
     return owner.Load();
 }
 
@@ -457,15 +465,21 @@ bool CrlfOnly(const std::string& bytes) {
     return !bytes.empty() && bytes.back() == '\n';
 }
 
-// The migration on one copy of the input. Returns what it ran on.
-std::optional<Config> Migrate(Scratch& scratch, const Input& input, bool readOnly) {
+struct Migrated {
+    Config config;
+    std::string bytes;
+};
+
+// The migration on one copy of the input over the Defaults.ini at `defaults`. Returns what it ran
+// on and the file it wrote.
+std::optional<Migrated> Migrate(Scratch& scratch, const Input& input, bool readOnly, const fs::path& defaults) {
     const fs::path dir = scratch.Fresh(readOnly ? "migration-ro" : "migration");
     const fs::path file = Place(dir, input);
     if (input.bytes && readOnly) SetReadOnly(file);
     const std::vector<Entry> before = List(dir);
-    const std::string defaultsBefore = fs::exists(scratch.DefaultsPath()) ? ReadBytes(scratch.DefaultsPath()) : "";
+    const std::string defaultsBefore = fs::exists(defaults) ? ReadBytes(defaults) : "";
 
-    const cameraunlock::config::ConfigLoadResult<Config> loaded = LoadOwner(scratch, dir);
+    const cameraunlock::config::ConfigLoadResult<Config> loaded = LoadOwner(defaults, dir);
     const ConfigLoadStatus expected = input.bytes ? ConfigLoadStatus::Migrated : ConfigLoadStatus::Created;
     Check(loaded.status == expected, input.name + ": not " + cameraunlock::config::ConfigLoadStatusName(expected) +
                                          " but " + cameraunlock::config::ConfigLoadStatusName(loaded.status) +
@@ -490,27 +504,126 @@ std::optional<Config> Migrate(Scratch& scratch, const Input& input, bool readOnl
 
     // The next start reads CameraUnlock.ini, runs on the same settings and changes nothing.
     const std::vector<Entry> settled = List(dir);
-    const cameraunlock::config::ConfigLoadResult<Config> again = LoadOwner(scratch, dir);
+    const cameraunlock::config::ConfigLoadResult<Config> again = LoadOwner(defaults, dir);
     Check(again.status == ConfigLoadStatus::Canonical, input.name + ": the second start did not read CameraUnlock.ini");
     Check(SettingsDifferences(again.config, loaded.config).empty(),
           input.name + ": the second start runs on other settings: " +
               Join(SettingsDifferences(again.config, loaded.config)));
     Check(List(dir) == settled, input.name + ": the second start changed a file");
     if (!defaultsBefore.empty()) {
-        Check(ReadBytes(scratch.DefaultsPath()) == defaultsBefore, input.name + ": Defaults.ini changed");
+        Check(ReadBytes(defaults) == defaultsBefore, input.name + ": Defaults.ini changed");
     }
-    return loaded.config;
+    return Migrated{loaded.config, bytes};
 }
 
-void Comparison2(Scratch& scratch, const Input& input, const ImportRun& import) {
-    const std::optional<Config> migrated = Migrate(scratch, input, false);
-    const std::optional<Config> readOnly = Migrate(scratch, input, true);
+using Concept = cameraunlock::config::schema::Concept;
+
+// Every row the table binds that follows Defaults.ini: its section and key, its value in the
+// skewed Defaults.ini, and whether two loads agree on it.
+struct FollowingRow {
+    Concept concept;
+    const char* section;
+    const char* key;
+    const char* skewed;
+    std::function<bool(const Config&, const Config&)> same;
+};
+
+const std::vector<FollowingRow>& FollowingRows() {
+    static const std::vector<FollowingRow> rows = {
+        {Concept::UdpPort, "Network", "UdpPort", "5555",
+         [](const Config& a, const Config& b) { return a.udp_port == b.udp_port; }},
+        {Concept::EnableOnStartup, "General", "EnableOnStartup", "false",
+         [](const Config& a, const Config& b) { return a.enable_on_startup == b.enable_on_startup; }},
+        {Concept::WorldSpaceYaw, "General", "WorldSpaceYaw", "false",
+         [](const Config& a, const Config& b) { return a.world_space_yaw == b.world_space_yaw; }},
+        {Concept::RotationEnabled, "General", "RotationEnabled", "false",
+         [](const Config& a, const Config& b) { return a.rotation_enabled == b.rotation_enabled; }},
+        {Concept::LocalSmoothing, "Smoothing", "LocalSmoothing", "0.25",
+         [](const Config& a, const Config& b) {
+             return SameBits(a.local_smoothing, b.local_smoothing) &&
+                    SameBits(a.position.local_smoothing, b.position.local_smoothing);
+         }},
+        {Concept::RemoteSmoothing, "Smoothing", "RemoteSmoothing", "0.45",
+         [](const Config& a, const Config& b) {
+             return SameBits(a.remote_smoothing, b.remote_smoothing) &&
+                    SameBits(a.position.remote_smoothing, b.position.remote_smoothing);
+         }},
+        {Concept::PositionEnabled, "Position", "PositionEnabled", "true",
+         [](const Config& a, const Config& b) { return a.position_enabled == b.position_enabled; }},
+        {Concept::CollisionEnabled, "Position", "CollisionEnabled", "false",
+         [](const Config& a, const Config& b) { return a.collision_enabled == b.collision_enabled; }},
+        {Concept::CollisionReleaseSmoothing, "Position", "CollisionReleaseSmoothing", "0.7",
+         [](const Config& a, const Config& b) {
+             return SameBits(a.lean_clamp.release_smoothing, b.lean_clamp.release_smoothing);
+         }},
+        {Concept::ToggleKey, "Hotkeys", "ToggleKey", "F7",
+         [](const Config& a, const Config& b) { return a.toggle_key_name == b.toggle_key_name; }},
+        {Concept::CycleTrackingModeKey, "Hotkeys", "CycleTrackingModeKey", "F8",
+         [](const Config& a, const Config& b) {
+             return a.cycle_tracking_mode_key_name == b.cycle_tracking_mode_key_name;
+         }},
+        {Concept::YawModeKey, "Hotkeys", "YawModeKey", "F9",
+         [](const Config& a, const Config& b) { return a.yaw_mode_key_name == b.yaw_mode_key_name; }},
+        {Concept::LightFollowsHead, "Light", "LightFollowsHead", "false",
+         [](const Config& a, const Config& b) { return a.light.follows_head == b.light.follows_head; }},
+        {Concept::LightMultiplier, "Light", "LightMultiplier", "2.5",
+         [](const Config& a, const Config& b) { return SameBits(a.light.multiplier, b.light.multiplier); }},
+    };
+    return rows;
+}
+
+// The rows the player never changed, worked out here from the published build's own defaults:
+// every setting HeadTracking.ini held at its shipped value, and every one it did not hold.
+std::set<Concept> Untouched(const legacy::Config& l) {
+    const legacy::Config shipped;
+    std::set<Concept> u = {Concept::EnableOnStartup, Concept::RotationEnabled,      Concept::PositionEnabled,
+                           Concept::ToggleKey,       Concept::CycleTrackingModeKey, Concept::LightFollowsHead,
+                           Concept::LightMultiplier};
+    if (l.udp_port == shipped.udp_port) u.insert(Concept::UdpPort);
+    if (SameBits(l.local_smoothing, shipped.local_smoothing)) u.insert(Concept::LocalSmoothing);
+    if (SameBits(l.remote_smoothing, shipped.remote_smoothing)) u.insert(Concept::RemoteSmoothing);
+    if (l.world_space_yaw == shipped.world_space_yaw) u.insert(Concept::WorldSpaceYaw);
+    if (l.collision_enabled == shipped.collision_enabled) u.insert(Concept::CollisionEnabled);
+    if (SameBits(l.collision_release_smoothing, shipped.collision_release_smoothing)) {
+        u.insert(Concept::CollisionReleaseSmoothing);
+    }
+    if (l.yaw_mode_key == shipped.yaw_mode_key) u.insert(Concept::YawModeKey);
+    return u;
+}
+
+std::string Names(const std::set<Concept>& concepts) {
+    std::vector<std::string> names;
+    for (const Concept c : concepts) {
+        names.push_back(cameraunlock::config::schema::kConcepts[static_cast<std::size_t>(c)].name);
+    }
+    return Join(names);
+}
+
+// The skewed Defaults.ini: the built-in one the first owner created, with every row that follows
+// it set to a value that differs from the built-in one and from what the published build shipped.
+void WriteSkewedDefaults(const Scratch& scratch) {
+    std::vector<cameraunlock::IniEdit> edits;
+    for (const FollowingRow& row : FollowingRows()) edits.push_back({row.section, row.key, row.skewed});
+    const cameraunlock::IniEditResult edited = cameraunlock::EditIni(ReadBytes(scratch.DefaultsPath()), edits);
+    if (edited.refusal != cameraunlock::IniEditRefusal::None) {
+        throw std::runtime_error(std::string("could not skew Defaults.ini: ") +
+                                 cameraunlock::IniEditRefusalName(edited.refusal) + " " + edited.section + " " +
+                                 edited.key);
+    }
+    fs::create_directories(scratch.SkewedPath().parent_path());
+    WriteBytes(scratch.SkewedPath(), edited.bytes);
+}
+
+void Comparison2(Scratch& scratch, const Input& input, const ImportRun& import, const Config& skewed) {
+    const std::optional<Migrated> migrated = Migrate(scratch, input, false, scratch.DefaultsPath());
+    const std::optional<Migrated> readOnly = Migrate(scratch, input, true, scratch.DefaultsPath());
     if (!migrated || !readOnly) return;
-    Check(SettingsDifferences(*migrated, *readOnly).empty(),
-          input.name + ": a read-only copy migrates differently: " + Join(SettingsDifferences(*migrated, *readOnly)));
+    Check(SettingsDifferences(migrated->config, readOnly->config).empty(),
+          input.name + ": a read-only copy migrates differently: " +
+              Join(SettingsDifferences(migrated->config, readOnly->config)));
 
     const legacy::Config& l = import.config;
-    const Config& m = *migrated;
+    const Config& m = migrated->config;
     const std::vector<std::string> d = MigrationDifferences(l, m);
     Check(d.empty(), input.name + ": migration differs from the import: " + Join(d));
 
@@ -530,6 +643,26 @@ void Comparison2(Scratch& scratch, const Input& input, const ImportRun& import) 
     const votv_oracle_view::FireTable before = votv_oracle_view::OracleFires(l.yaw_mode_key);
     const votv_oracle_view::FireTable after = CurrentFires(m);
     Check(before == after, input.name + ": hotkeys fire differently: " + FirstFireDifference(before, after));
+
+    const std::set<Concept> follows(imported.follows_defaults_ini.begin(), imported.follows_defaults_ini.end());
+    Check(follows.size() == imported.follows_defaults_ini.size(), input.name + ": follows_defaults_ini repeats a row");
+    const std::set<Concept> untouched = Untouched(l);
+    Check(follows == untouched, input.name + ": the rows left to Defaults.ini are " + Names(follows) +
+                                    ", not the untouched " + Names(untouched));
+
+    const std::optional<Migrated> over = Migrate(scratch, input, false, scratch.SkewedPath());
+    if (!over) return;
+    const cameraunlock::config::CanonicalIni doc = cameraunlock::config::ParseCanonicalIni(over->bytes);
+    for (const FollowingRow& row : FollowingRows()) {
+        const std::string what = input.name + ": over the skewed Defaults.ini, " + row.section + " " + row.key;
+        if (untouched.count(row.concept) != 0) {
+            const cameraunlock::config::CanonicalValue* written = doc.Find(row.section, row.key);
+            Check(written != nullptr && written->value == "default", what + " is not written default");
+            Check(row.same(over->config, skewed), what + " does not take Defaults.ini's value");
+        } else {
+            Check(row.same(over->config, m), what + " does not keep the value the player changed");
+        }
+    }
 }
 
 
@@ -562,11 +695,30 @@ int main() {
                   "the oracle's first-run output differs from data/dev-first-run.ini");
         }
 
+        // The built-in Defaults.ini, created by the first owner, then the skewed copy of it and
+        // what a start with no legacy file runs on over it.
+        LoadOwner(scratch.DefaultsPath(), scratch.Fresh("created"));
+        WriteSkewedDefaults(scratch);
+        const std::optional<Migrated> skewed =
+            Migrate(scratch, {"no file, skewed Defaults.ini", std::nullopt}, false, scratch.SkewedPath());
+        if (!skewed) throw std::runtime_error("no start over the skewed Defaults.ini");
+        // Position only: the mode differs from rotation and position, though PositionEnabled alone
+        // does not.
+        const std::optional<Migrated> builtIn =
+            Migrate(scratch, {"no file, built-in Defaults.ini", std::nullopt}, false, scratch.DefaultsPath());
+        if (!builtIn) throw std::runtime_error("no start over the built-in Defaults.ini");
+        for (const FollowingRow& row : FollowingRows()) {
+            if (row.concept == Concept::PositionEnabled) continue;
+            Check(!row.same(skewed->config, builtIn->config),
+                  std::string("the skewed Defaults.ini holds the built-in ") + row.key);
+        }
+        scratch.Clear();
+
         const std::vector<Input> inputs = Inputs(firstRun);
         std::printf("comparison 1 (oracle dev b38440c against the import) on %zu inputs\n", inputs.size());
         std::printf("comparison 2 (the import against the migration)\n");
         for (const Input& input : inputs) {
-            Comparison2(scratch, input, Comparison1(scratch, input));
+            Comparison2(scratch, input, Comparison1(scratch, input), skewed->config);
             scratch.Clear();
         }
     } catch (const std::exception& e) {

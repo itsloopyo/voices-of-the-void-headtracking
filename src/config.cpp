@@ -66,7 +66,28 @@ cfg::ImportResult RunImport(const cfg::LegacyInput& input, Config& out) {
     // [Dev] DevCommands is not carried. Only a build configured with VOTV_DEV_COMMANDS reads
     // it, and no published build was, so for every player it did nothing.
 
-    return absent ? cfg::ImportResult::Absent(std::move(dropped)) : cfg::ImportResult::Imported(std::move(dropped));
+    // A setting the player never changed from what the published build shipped follows
+    // Defaults.ini. The start state, the tracking mode, End, Page Up and the light were not in
+    // HeadTracking.ini at all.
+    const legacy::Config shipped;
+    cfg::LegacyFollowsDefaultsIni follows;
+    follows.Setting(C::UdpPort, read.udp_port, shipped.udp_port);
+    follows.Setting(C::LocalSmoothing, read.local_smoothing, shipped.local_smoothing);
+    follows.Setting(C::RemoteSmoothing, read.remote_smoothing, shipped.remote_smoothing);
+    follows.Setting(C::WorldSpaceYaw, read.world_space_yaw, shipped.world_space_yaw);
+    follows.Setting(C::CollisionEnabled, read.collision_enabled, shipped.collision_enabled);
+    follows.Setting(C::CollisionReleaseSmoothing, read.collision_release_smoothing,
+                    shipped.collision_release_smoothing);
+    follows.Setting(C::YawModeKey, read.yaw_mode_key, shipped.yaw_mode_key);
+    follows.NotInLegacy(C::EnableOnStartup);
+    follows.TrackingMode(true);
+    follows.NotInLegacy(C::ToggleKey);
+    follows.NotInLegacy(C::CycleTrackingModeKey);
+    follows.NotInLegacy(C::LightFollowsHead);
+    follows.NotInLegacy(C::LightMultiplier);
+
+    return absent ? cfg::ImportResult::Absent(std::move(dropped), {}, follows.Concepts())
+                  : cfg::ImportResult::Imported(std::move(dropped), {}, follows.Concepts());
 }
 
 std::optional<cfg::ConfigOwner<Config>> g_owner;

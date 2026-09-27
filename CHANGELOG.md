@@ -22,6 +22,7 @@
 - The settings keep their meaning under the fleet's names: `[Network] Port` is `UdpPort`; `[Tracking] LocalSmoothing` and `RemoteSmoothing` are under `[Smoothing]`; `[Camera] CollisionEnabled`, `CollisionMargin`, `CollisionChannel` and `CollisionReleaseSmoothing` are under `[Position]`; `[Hotkeys] YawMode`, a virtual-key code, is `YawModeKey`, a key list that also holds the `Ctrl+Shift+H` chord. `[General] DisableInMultiplayer` and `[Camera] AimTraceChannel` keep their names.
 - The tracking mode (`Page Up`) and the yaw mode (`Page Down`) are saved to `CameraUnlock.ini` the moment they change, and the game starts in them next time. Turning head tracking on or off with `End` still changes the current session only.
 - `uninstall.cmd` leaves `CameraUnlock.ini` and `HeadTracking.ini` in place, so a reinstall keeps your settings. It used to delete `HeadTracking.ini`.
+- A setting that the defaults the README shows set to `default` is written as `default` when you never changed it from the default earlier versions used, because `HeadTracking.ini` does not hold it or holds that default. It then follows `Defaults.ini`, so it takes the value `Defaults.ini` gives it, or the built-in value where `Defaults.ini` gives none, which can differ from the default earlier versions used. A setting you changed is written with the value imported for it, or as `default` where that value equals its default at that start.
 
 ### Added
 
