@@ -9,12 +9,12 @@ An unofficial head tracking mod for Voices of the Void that moves the view with 
 ## Features
 
 - **Decoupled look and aim** - head tracking moves the camera; what you point at stays on your mouse
-- **6DOF positional tracking** - lean and peek with head position
+- **6DOF tracking** - yaw, pitch and roll plus positional lean, peek and duck
 - **Works with any OpenTrack compatible tracker** - free options available for PC, iOS and Android
 
 ## Requirements
 
-- [Voices of the Void](https://mrdrnose.itch.io/votv). The game is a direct download from itch.io, kept current by the `YeetPatch` updater that ships beside it; that is the copy this mod has a profile for. It is not sold through Steam, GOG, Epic or Game Pass, so there is no store install to point the mod at.
+- [Voices of the Void](https://mrdrnose.itch.io/votv), Alpha 0.9.0 / Build a090n, downloaded from itch.io. Check the build label at the top left of the main menu.
 - A head tracking source that can send the OpenTrack UDP protocol: [OpenTrack](https://github.com/opentrack/opentrack) with a webcam or a VR headset, or a phone app that sends it directly.
 - Windows 10 or 11, 64-bit.
 
@@ -22,15 +22,21 @@ The mod recognizes the game build it was made for by its executable: the build w
 
 ## Installation
 
-### Installer
+### Lopari
 
-1. Download the installer ZIP from the [Releases](https://github.com/itsloopyo/voices-of-the-void-headtracking/releases) page. There is no release yet; until there is, build from source.
+Once this mod is available in Lopari, download [Lopari](https://lopari.app), choose **Voices of the Void**, and click **Play with head tracking**.
+
+### Standalone Installer
+
+**Development build:** a pre-release installer is available; there is no stable release yet.
+
+1. Download `VoicesOfTheVoidHeadTracking-dev-installer.zip` from the [development release](https://github.com/itsloopyo/voices-of-the-void-headtracking/releases/tag/dev).
 2. Extract it anywhere.
 3. Double-click `install.cmd`. It asks where the game is: give it the `WindowsNoEditor` folder, the one holding `VotV.exe`.
 4. Configure OpenTrack to output UDP to `127.0.0.1:4242`.
 5. Launch the game.
 
-**You have to tell the installer where the game is.** There is nothing on the machine for it to look up: the game arrives as an archive you extract wherever you like, and unpacking it writes no registry key, no store manifest and no launcher entry. Nothing records where it went except you.
+Give the installer the folder where you extracted the game, or set `VOICES_OF_THE_VOID_PATH` as described below.
 
 Pasting the path answers the prompt, including the quoted form Explorer's **Copy as path** puts on the clipboard. To give it up front instead:
 
@@ -121,7 +127,15 @@ The mode you pick is saved to `CameraUnlock.ini` and is the one the game starts 
 
 While you ride the ATV, head yaw always turns about the camera's own up-axis, whichever mode is set. The ATV's camera tilts with the vehicle, so the world's up-axis has no fixed relation to where you are looking. Your yaw mode applies again once you get off.
 
+### Signal scanner and generator puzzles
+
+Head tracking stays active while using the signal scanner and generator puzzles. Turn or lean to see parts of the panel that fall outside your view on an ultrawide display. The mouse still operates the controls where they appear on screen. This was tested at 32:9.
+
+Pause menus and inventory suspend tracking. Closing them returns you to head tracking; no extra toggle is needed.
+
 ## Configuration
+
+Close the game before editing `CameraUnlock.ini`, then launch it again to load your changes. Set sensitivity, axis mapping, and centering in your tracker.
 
 <!-- cameraunlock:config -->
 The mod reads its settings from `VotV\Binaries\Win64\CameraUnlock.ini` in the game folder, and creates the file when it starts and finds none. Edit it with any text editor.
@@ -245,14 +259,18 @@ Voices of the Void has its own field of view slider in the settings. The mod rea
 
 Head tracking moves the picture by the same amount whatever field of view the game is drawing at, so zooming in feels no more sensitive than walking around does. The `fov:` line in the log carries the field of view being drawn, the un-zoomed one, and the factor between them, and reads `factor 1.0000` in ordinary play.
 
+### Positional lean
+
+Positional tracking works in the tutorial and main game. Your tracker must send position as well as rotation for leaning to move the view. `Page Up` cycles between both, rotation only, and position only. Collision limits the lean near walls and edges.
+
 ### Flashlight
 
-Your flashlight follows your head rather than your aim, and turns a little further than the view does. When you turn your head your eyes end up past the centre of the screen, so a beam matched to the view alone lands short of what you are looking at. It goes back to pointing along your mouse aim, as the game has it, in menus, with tracking switched off, and while you ride the ATV.
+Your flashlight follows head rotation and positional lean, so its beam and shadows move with you. By default it turns 1.5 times the head rotation applied to the view. Its positional movement uses the same collision-clamped lean as the camera. In menus, with tracking switched off, and while you ride the ATV, the game controls the flashlight.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
-| `LightFollowsHead` | `true` | Point the light where you are looking |
-| `LightMultiplier` | `1.5` | How far it turns relative to your head. `1.0` matches the view, `0` leaves the beam on the aim |
+| `LightFollowsHead` | `true` | Apply head rotation and positional lean to the flashlight. `false` leaves it under the game's control |
+| `LightMultiplier` | `1.5` | Rotation multiplier. `1.0` matches the view, `0` keeps its direction on your aim while it still follows positional lean |
 
 ### Window placement
 
@@ -286,11 +304,16 @@ A windowed game is moved once to the center of the desktop work area on the moni
 
 **Leaning into a wall stops short:**
 
-- By design. The lean is cut to the room the level leaves, holding the view `CollisionMargin` centimetres off the surface, and the log writes `lean-clamp: holding the view off geometry` when it does. `CollisionEnabled=false` in `CameraUnlock.ini` turns that off, at the cost of seeing through walls when you lean into them.
+- By design. Collision checks cover walls, corners, and edges. `CollisionMargin` sets the clearance around the eye, 15 cm by default. If the game's own camera starts closer to a surface, the check preserves that existing clearance so you can still lean away. The log writes `lean-clamp: holding the view off geometry` when a surface stops a lean.
+- `CollisionEnabled=false` under `[Position]` in `CameraUnlock.ini` disables the check, allowing the view through walls. Keep it enabled for normal play.
+
+**Settings edits do not take effect:**
+
+- Close the game, edit `VotV\Binaries\Win64\CameraUnlock.ini`, then relaunch. A value of `default` follows `Defaults.ini`; enter a value to override it for this game. The old `HeadTracking.ini` is only imported when `CameraUnlock.ini` is absent.
 
 **The crosshair has moved off the middle of the screen:**
 
-- That is where you are actually pointing. With your head turned or leaning, the middle of the screen is no longer the direction the game reads for picking things up, so the mod moves the crosshair onto the point the game would interact with. The crosshair always follows your aim; no setting turns that off.
+- That is where you are actually pointing. With your head turned or leaning, the middle of the screen is no longer the direction the game reads for picking things up, so the mod moves the crosshair onto the point the game would interact with. At the scanner and generator puzzles, the game controls the interface cursor instead.
 
 **The crosshair wobbles slightly while standing still:**
 
