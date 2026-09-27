@@ -4,7 +4,7 @@
 
 An unofficial head tracking mod for Voices of the Void that moves the view with your head while your mouse keeps control of look and interaction, driven by a webcam, phone, or any OpenTrack compatible tracker, with no VR headset required.
 
-**Settings have moved.** This version keeps its settings in `CameraUnlock.ini`, beside the game's shipping exe. The first time it starts it copies your settings over from `HeadTracking.ini`, which earlier versions used, and leaves that file as it was. See [Configuration](#configuration).
+**Settings have moved.** This version keeps its settings in `CameraUnlock.ini`, beside the game's shipping exe. The first time it starts it reads your settings from `HeadTracking.ini`, which earlier versions used, and leaves that file as it was. [CHANGELOG.md](CHANGELOG.md) lists what carries over.
 
 ## Features
 
@@ -311,7 +311,7 @@ A windowed game is moved once to the center of the desktop work area on the moni
 
 ## Updating
 
-Download the new release and run `install.cmd` again, pointing it at the same folder. `CameraUnlock.ini` is left alone, so your settings carry over. Coming from a version that used `HeadTracking.ini`, the first start copies your settings from it, as [Configuration](#configuration) describes.
+Download the new release and run `install.cmd` again, pointing it at the same folder. `CameraUnlock.ini` is left alone, so your settings carry over. Coming from a version that used `HeadTracking.ini`, the first start reads your settings from it, and [CHANGELOG.md](CHANGELOG.md) lists what carries over.
 
 ## Uninstalling
 
