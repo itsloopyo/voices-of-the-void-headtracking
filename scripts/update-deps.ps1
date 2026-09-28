@@ -23,6 +23,24 @@ if (-not (Test-Path $module)) {
 }
 Import-Module $module -Force
 
+# Not Get-FileHash: Windows PowerShell 5.1 autoloads it from a script module,
+# and a powershell.exe started from pwsh (GitHub Actions' shell: pwsh)
+# inherits pwsh's PSModulePath, resolves the Core-only
+# Microsoft.PowerShell.Utility first and reports the cmdlet as not recognized.
+function Get-Sha256Hex {
+    [OutputType([string])]
+    param([Parameter(Mandatory)][string]$LiteralPath)
+
+    $sha    = [System.Security.Cryptography.SHA256]::Create()
+    $stream = [System.IO.File]::OpenRead((Convert-Path -LiteralPath $LiteralPath))
+    try {
+        return [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $stream.Dispose()
+        $sha.Dispose()
+    }
+}
+
 $vendorAsiDir     = Join-Path $projectDir 'vendor/ultimate-asi-loader'
 $vendorAsiDll     = Join-Path $vendorAsiDir 'dinput8.dll'
 $vendorAsiLicense = Join-Path $vendorAsiDir 'LICENSE'
@@ -99,13 +117,13 @@ try {
         throw ("Extracted ASI Loader is not x64 (machine=0x{0:X4}); refusing to vendor it." -f $machine)
     }
 
-    $dllSha = (Get-FileHash -LiteralPath $tempDll -Algorithm SHA256).Hash.ToLower()
+    $dllSha = Get-Sha256Hex -LiteralPath $tempDll
 
     # Idempotency: an upstream that has not moved must leave the tree clean. Without
     # this the FetchedAt line rewrites README.md on every run, so `git status` after a
     # no-op refresh shows a timestamp-only diff with no artifact behind it.
     if ((Test-Path -LiteralPath $vendorAsiDll) -and (Test-Path -LiteralPath $vendorAsiLicense) -and (Test-Path -LiteralPath $vendorAsiReadme) -and
-        ((Get-FileHash -LiteralPath $vendorAsiDll -Algorithm SHA256).Hash.ToLower() -eq $dllSha)) {
+        ((Get-Sha256Hex -LiteralPath $vendorAsiDll) -eq $dllSha)) {
         Write-Host "  no change (tag=$($meta.Tag) sha256=$($dllSha.Substring(0,12))... matches on-disk vendor copy)" -ForegroundColor DarkGray
         Write-Host ""
         Write-Host "vendor/ultimate-asi-loader is already up to date." -ForegroundColor Green
