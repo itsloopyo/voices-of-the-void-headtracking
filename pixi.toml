@@ -19,10 +19,12 @@ setup = { cmd = """
 build = { cmd = "cmake --build build --config Release", depends-on = ["setup"] }
 build-debug = { cmd = "cmake --build build --config Debug", depends-on = ["setup"] }
 
-# The behaviour tests, the frozen config reader and the config differential test against the
-# published build. The provenance check first: the differential test proves nothing once a file
-# it compiles has moved.
-test = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-differential-provenance.ps1 && ctest --test-dir build -C Release --output-on-failure", depends-on = ["build"] }
+# test-unit: the behaviour tests and the frozen config reader. test-differential: the config
+# differential test against the published build, the provenance check first: the differential
+# test proves nothing once a file it compiles has moved.
+test-unit = { cmd = "ctest --test-dir build -C Release --output-on-failure -LE differential", depends-on = ["build"] }
+test-differential = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-differential-provenance.ps1 && ctest --test-dir build -C Release --output-on-failure --no-tests=error -L differential", depends-on = ["build"] }
+test = { depends-on = ["test-unit", "test-differential"] }
 
 # Rewrite the committed CameraUnlock.ini from the config table after a change to a
 # row, a comment or a default, then the launcher manifest's config descriptor.
@@ -44,7 +46,7 @@ update-deps = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scrip
 # Package the installer ZIP. One ZIP only: the .asi deploys next to the game
 # exe, where no mod manager can put it, so this mod is installer-only and has
 # no Nexus ZIP.
-package = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build", "test"] }
+package = { cmd = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1", depends-on = ["build", "test-unit"] }
 
 # Full release workflow: stamp version, changelog, package, commit, tag, push.
 # Unattended - `pixi run release minor` is the authorization, there is no prompt.

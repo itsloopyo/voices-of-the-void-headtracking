@@ -17,12 +17,6 @@
 
 name: Build
 
-# This workflow reads the repo and publishes nothing (see the header), so its
-# token needs no write scope. Without the block it inherits whatever the
-# repository default is, which on an older repo is write-all.
-permissions:
-  contents: read
-
 on:
   push:
     branches: ['**']
@@ -36,6 +30,13 @@ on:
       - '**.md'
       - 'docs/**'
       - 'LICENSE'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:

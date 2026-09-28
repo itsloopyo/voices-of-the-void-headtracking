@@ -389,4 +389,5 @@ if(VOTV_BUILD_TESTS)
     target_link_libraries(votv_config_differential_tests PRIVATE
         cameraunlock votv_config_oracle votv_hotkeys_oracle)
     add_test(NAME votv_config_differential_tests COMMAND votv_config_differential_tests)
+    set_tests_properties(votv_config_differential_tests PROPERTIES LABELS differential)
 endif()
